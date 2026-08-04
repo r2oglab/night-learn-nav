@@ -118,6 +118,7 @@ function Index() {
             <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
               <div className="mb-4 flex items-center gap-3">
                 <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
+                {isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
                 <div className="ml-auto flex items-center gap-2">
                   <Button variant="outline" size="icon" className="size-8">
                     <ChevronLeft className="size-4" />
