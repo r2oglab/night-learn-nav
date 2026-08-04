@@ -4,6 +4,7 @@ import {
   generatorParameters,
   Rating,
   State,
+  type Grade,
   type Card,
 } from "ts-fsrs";
 
@@ -71,7 +72,7 @@ export function newCardFields(): CardFields {
 }
 
 export function reviewCard(row: ThemeRow, rating: number, now = new Date()): CardFields {
-  const result = scheduler.next(rowToCard(row), now, rating as Rating);
+  const result = scheduler.next(rowToCard(row), now, rating as Grade);
   return cardToFields(result.card);
 }
 
