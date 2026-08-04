@@ -18,23 +18,88 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          rating: number | null
           scheduled_date: string
           status: string
           theme: string
+          theme_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
+          rating?: number | null
           scheduled_date: string
           status?: string
           theme: string
+          theme_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
+          rating?: number | null
           scheduled_date?: string
           status?: string
           theme?: string
+          theme_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revisions_theme_id_fkey"
+            columns: ["theme_id"]
+            isOneToOne: false
+            referencedRelation: "themes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      themes: {
+        Row: {
+          created_at: string
+          difficulty: number
+          due: string
+          elapsed_days: number
+          id: string
+          lapses: number
+          last_review: string | null
+          name: string
+          reps: number
+          scheduled_days: number
+          stability: number
+          state: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          difficulty?: number
+          due?: string
+          elapsed_days?: number
+          id?: string
+          lapses?: number
+          last_review?: string | null
+          name: string
+          reps?: number
+          scheduled_days?: number
+          stability?: number
+          state?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          difficulty?: number
+          due?: string
+          elapsed_days?: number
+          id?: string
+          lapses?: number
+          last_review?: string | null
+          name?: string
+          reps?: number
+          scheduled_days?: number
+          stability?: number
+          state?: number
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
