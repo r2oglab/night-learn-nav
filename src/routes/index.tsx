@@ -168,7 +168,7 @@ function Index() {
                             </span>
                           </div>
                           <div className="space-y-1">
-                            {(mockReviews[day] ?? []).map((review, idx) => (
+                            {(reviewsByDay[day] ?? []).map((review: Review, idx: number) => (
                               <div
                                 key={idx}
                                 className={cn(
