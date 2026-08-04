@@ -10,7 +10,7 @@ import {
 
 export const scheduler = fsrs(generatorParameters({ enable_fuzz: true }));
 
-export type ThemeRow = {
+export type CardRow = {
   due: string;
   stability: number;
   difficulty: number;
@@ -21,6 +21,8 @@ export type ThemeRow = {
   state: number;
   last_review: string | null;
 };
+
+export type ThemeRow = CardRow;
 
 export type CardFields = {
   due: string;
@@ -37,7 +39,7 @@ export type CardFields = {
 
 
 
-export function rowToCard(row: ThemeRow): Card {
+export function rowToCard(row: CardRow): Card {
   const empty = createEmptyCard();
   return {
     ...empty,
@@ -71,12 +73,12 @@ export function newCardFields(): CardFields {
   return cardToFields(createEmptyCard());
 }
 
-export function reviewCard(row: ThemeRow, rating: number, now = new Date()): CardFields {
+export function reviewCard(row: CardRow, rating: number, now = new Date()): CardFields {
   const result = scheduler.next(rowToCard(row), now, rating as Grade);
   return cardToFields(result.card);
 }
 
-export function previewIntervals(row: ThemeRow, now = new Date()) {
+export function previewIntervals(row: CardRow, now = new Date()) {
   const log = scheduler.repeat(rowToCard(row), now);
   return {
     [Rating.Again]: log[Rating.Again].card.due,
