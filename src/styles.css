@@ -42,6 +42,12 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-pending: var(--pending);
+  --color-pending-foreground: var(--pending-foreground);
+  --color-overdue: var(--overdue);
+  --color-overdue-foreground: var(--overdue-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -79,6 +85,12 @@
   --accent-foreground: oklch(0.96 0.005 260);
   --destructive: oklch(0.62 0.2 25);
   --destructive-foreground: oklch(0.98 0.003 260);
+  --success: oklch(0.72 0.15 155);
+  --success-foreground: oklch(0.18 0.04 155);
+  --overdue: oklch(0.63 0.2 22);
+  --overdue-foreground: oklch(0.98 0.02 22);
+  --pending: oklch(0.55 0.015 265);
+  --pending-foreground: oklch(0.96 0.005 260);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 14%);
   --ring: oklch(0.75 0.15 168);
