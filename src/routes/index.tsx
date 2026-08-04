@@ -1,10 +1,12 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -32,42 +34,6 @@ type Review = { theme: string; status: Status };
 
 const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-// Dados fictícios: dia do mês -> revisões
-const mockReviews: Record<number, Review[]> = {
-  2: [{ theme: "Anatomia", status: "done" }],
-  3: [
-    { theme: "Inglês", status: "done" },
-    { theme: "História", status: "overdue" },
-  ],
-  5: [{ theme: "Química", status: "done" }],
-  8: [
-    { theme: "Física", status: "overdue" },
-    { theme: "Redação", status: "done" },
-    { theme: "Biologia", status: "done" },
-  ],
-  11: [{ theme: "Geografia", status: "done" }],
-  12: [
-    { theme: "Matemática", status: "overdue" },
-    { theme: "Inglês", status: "pending" },
-  ],
-  14: [{ theme: "Filosofia", status: "pending" }],
-  17: [
-    { theme: "Anatomia", status: "pending" },
-    { theme: "Química", status: "pending" },
-    { theme: "História", status: "pending" },
-    { theme: "Literatura", status: "pending" },
-  ],
-  19: [{ theme: "Física", status: "pending" }],
-  22: [
-    { theme: "Sociologia", status: "pending" },
-    { theme: "Biologia", status: "pending" },
-  ],
-  25: [{ theme: "Redação", status: "pending" }],
-  28: [
-    { theme: "Matemática", status: "pending" },
-    { theme: "Inglês", status: "pending" },
-  ],
-};
 
 const statusStyles: Record<Status, string> = {
   done: "bg-success/20 text-success border-success/30",
@@ -89,11 +55,37 @@ const firstWeekday = new Date(year, month, 1).getDay();
 const today = 4;
 
 function Index() {
+  const { data: reviewsByDay = {}, isLoading } = useQuery({
+    queryKey: ["revisions", year, month],
+    queryFn: async () => {
+      const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+      const end = `${year}-${String(month + 1).padStart(2, "0")}-${daysInMonth}`;
+      const { data, error } = await supabase
+        .from("revisions")
+        .select("theme, scheduled_date, status")
+        .gte("scheduled_date", start)
+        .lte("scheduled_date", end)
+        .order("scheduled_date", { ascending: true });
+      if (error) throw error;
+
+      const grouped: Record<number, Review[]> = {};
+      for (const row of data ?? []) {
+        const day = Number(row.scheduled_date.slice(8, 10));
+        (grouped[day] ??= []).push({
+          theme: row.theme,
+          status: row.status as Status,
+        });
+      }
+      return grouped;
+    },
+  });
+
   const cells: (number | null)[] = [
     ...Array.from({ length: firstWeekday }, () => null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
   while (cells.length % 7 !== 0) cells.push(null);
+
 
   return (
     <SidebarProvider>
@@ -126,6 +118,7 @@ function Index() {
             <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
               <div className="mb-4 flex items-center gap-3">
                 <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
+                {isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
                 <div className="ml-auto flex items-center gap-2">
                   <Button variant="outline" size="icon" className="size-8">
                     <ChevronLeft className="size-4" />
@@ -176,7 +169,7 @@ function Index() {
                             </span>
                           </div>
                           <div className="space-y-1">
-                            {(mockReviews[day] ?? []).map((review, idx) => (
+                            {(reviewsByDay[day] ?? []).map((review: Review, idx: number) => (
                               <div
                                 key={idx}
                                 className={cn(
