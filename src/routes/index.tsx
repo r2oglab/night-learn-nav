@@ -30,7 +30,7 @@ export const Route = createFileRoute("/")({
 });
 
 type Status = "done" | "overdue" | "pending";
-type Review = { theme: string; status: Status };
+type Review = { theme: string; statuses: Status[] };
 
 const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -61,42 +61,77 @@ function Index() {
     queryFn: async () => {
       const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
       const end = `${year}-${String(month + 1).padStart(2, "0")}-${daysInMonth}`;
-      const { data, error } = await supabase
+
+      // Busca 1: por due (decide only between overdue and pending)
+      const { data: dueData, error: dueError } = await supabase
         .from("cards")
         .select("id, theme_id, pergunta, resposta, due, state, last_review, themes(name)")
         .gte("due", start)
         .lte("due", end)
         .order("due", { ascending: true });
-      if (error) throw error;
+      if (dueError) throw dueError;
 
-      function isSameDay(a: Date, b: Date) {
-        return (
-          a.getFullYear() === b.getFullYear() &&
-          a.getMonth() === b.getMonth() &&
-          a.getDate() === b.getDate()
-        );
+      // Busca 2: por last_review (done only on the exact review day)
+      const { data: reviewData, error: reviewError } = await supabase
+        .from("cards")
+        .select("id, theme_id, pergunta, resposta, last_review, themes(name)")
+        .not("last_review", "is", null)
+        .gte("last_review", start)
+        .lte("last_review", end)
+        .order("last_review", { ascending: true });
+      if (reviewError) throw reviewError;
+
+      function dayFromISO(iso?: string) {
+        if (!iso) return null;
+        return Number(iso.slice(8, 10));
       }
 
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      const grouped: Record<number, Review[]> = {};
-      for (const row of data ?? []) {
-        const day = Number(row.due.slice(8, 10));
+      type DayEntry = { id: string; theme: string; statuses: Status[]; labelDate?: string };
+      const grouped: Record<number, DayEntry[]> = {};
+
+      // process dueData: decide only between overdue and pending
+      for (const row of dueData ?? []) {
+        const day = dayFromISO(row.due);
+        if (!day) continue;
         const dueDate = new Date(`${row.due}T00:00:00`);
-        const lastReview = row.last_review ? new Date(row.last_review) : null;
 
-        const status: Status = lastReview && isSameDay(lastReview, todayStart)
-          ? "done"
-          : dueDate < todayStart
-            ? "overdue"
-            : "pending";
+        const status: Status = dueDate < todayStart ? "overdue" : "pending";
 
-        (grouped[day] ??= []).push({
-          theme: row.themes?.name ?? row.pergunta,
-          status,
-        });
+        const themeLabel = row.themes?.name ?? row.pergunta;
+        (grouped[day] ??= []);
+
+        const existing = grouped[day]!.find((e) => e.id === row.id);
+        if (existing) {
+          if (!existing.statuses.includes(status)) existing.statuses.push(status);
+        } else {
+          grouped[day]!.push({ id: row.id, theme: themeLabel, statuses: [status], labelDate: row.due });
+        }
       }
-      return grouped;
+
+      // process reviewData: add 'done' status on the exact review day
+      for (const row of reviewData ?? []) {
+        const day = dayFromISO(row.last_review);
+        if (!day) continue;
+        const themeLabel = row.themes?.name ?? row.pergunta;
+        (grouped[day] ??= []);
+
+        const existing = grouped[day]!.find((e) => e.id === row.id);
+        if (existing) {
+          if (!existing.statuses.includes("done")) existing.statuses.push("done");
+        } else {
+          grouped[day]!.push({ id: row.id, theme: themeLabel, statuses: ["done"], labelDate: row.last_review });
+        }
+      }
+
+      // convert DayEntry to Review[] (strip ids/labelDate)
+      const result: Record<number, Review[]> = {};
+      for (const dayStr of Object.keys(grouped)) {
+        const day = Number(dayStr);
+        result[day] = grouped[day].map((e) => ({ theme: e.theme, statuses: e.statuses }));
+      }
+      return result;
     },
   });
 
@@ -190,14 +225,18 @@ function Index() {
                           </div>
                           <div className="space-y-1">
                             {(reviewsByDay[day] ?? []).map((review: Review, idx: number) => (
-                              <div
-                                key={idx}
-                                className={cn(
-                                  "truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-                                  statusStyles[review.status],
-                                )}
-                              >
-                                {review.theme}
+                              <div key={idx} className="space-y-1">
+                                {review.statuses.map((s, si) => (
+                                  <div
+                                    key={si}
+                                    className={cn(
+                                      "truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
+                                      statusStyles[s as Status],
+                                    )}
+                                  >
+                                    {review.theme}
+                                  </div>
+                                ))}
                               </div>
                             ))}
                           </div>
