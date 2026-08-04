@@ -25,10 +25,10 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 
 const items = [
-  { title: "Dashboard", icon: LayoutDashboard, active: true },
-  { title: "Revisões", icon: Repeat, active: false },
-  { title: "Flashcards", icon: Layers, active: false },
-  { title: "Configurações", icon: Settings, active: false },
+  { title: "Dashboard", icon: LayoutDashboard, to: "/" as const },
+  { title: "Revisões", icon: Repeat, to: "/revisoes" as const },
+  { title: "Flashcards", icon: Layers, to: undefined },
+  { title: "Configurações", icon: Settings, to: undefined },
 ];
 
 export function AppSidebar() {
@@ -55,10 +55,19 @@ export function AppSidebar() {
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton isActive={item.active} tooltip={item.title}>
-                    <item.icon className="size-4" />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
+                  {item.to ? (
+                    <SidebarMenuButton asChild tooltip={item.title}>
+                      <Link to={item.to} activeProps={{ "data-active": "true" }}>
+                        <item.icon className="size-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  ) : (
+                    <SidebarMenuButton tooltip={item.title}>
+                      <item.icon className="size-4" />
+                      <span>{item.title}</span>
+                    </SidebarMenuButton>
+                  )}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
