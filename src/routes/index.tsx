@@ -55,11 +55,37 @@ const firstWeekday = new Date(year, month, 1).getDay();
 const today = 4;
 
 function Index() {
+  const { data: reviewsByDay = {}, isLoading } = useQuery({
+    queryKey: ["revisions", year, month],
+    queryFn: async () => {
+      const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+      const end = `${year}-${String(month + 1).padStart(2, "0")}-${daysInMonth}`;
+      const { data, error } = await supabase
+        .from("revisions")
+        .select("theme, scheduled_date, status")
+        .gte("scheduled_date", start)
+        .lte("scheduled_date", end)
+        .order("scheduled_date", { ascending: true });
+      if (error) throw error;
+
+      const grouped: Record<number, Review[]> = {};
+      for (const row of data ?? []) {
+        const day = Number(row.scheduled_date.slice(8, 10));
+        (grouped[day] ??= []).push({
+          theme: row.theme,
+          status: row.status as Status,
+        });
+      }
+      return grouped;
+    },
+  });
+
   const cells: (number | null)[] = [
     ...Array.from({ length: firstWeekday }, () => null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
   while (cells.length % 7 !== 0) cells.push(null);
+
 
   return (
     <SidebarProvider>
