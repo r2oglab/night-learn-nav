@@ -65,6 +65,25 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            {user ? (
+              <SidebarMenuButton onClick={() => signOut()} tooltip="Sair">
+                <LogOut className="size-4" />
+                <span className="truncate">{user.email ?? "Sair"}</span>
+              </SidebarMenuButton>
+            ) : (
+              <SidebarMenuButton asChild tooltip="Entrar">
+                <Link to="/auth">
+                  <LogIn className="size-4" />
+                  <span>Entrar</span>
+                </Link>
+              </SidebarMenuButton>
+            )}
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
