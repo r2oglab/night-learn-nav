@@ -1,0 +1,58 @@
+import { LayoutDashboard, Repeat, Layers, Settings, BrainCircuit } from "lucide-react";
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
+
+const items = [
+  { title: "Dashboard", icon: LayoutDashboard, active: true },
+  { title: "Revisões", icon: Repeat, active: false },
+  { title: "Flashcards", icon: Layers, active: false },
+  { title: "Configurações", icon: Settings, active: false },
+];
+
+export function AppSidebar() {
+  const { state } = useSidebar();
+  const collapsed = state === "collapsed";
+
+  return (
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <div className="flex items-center gap-2 px-2 py-3">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <BrainCircuit className="size-4" />
+          </div>
+          {!collapsed && (
+            <span className="text-sm font-semibold tracking-tight">Estuda</span>
+          )}
+        </div>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Navegação</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {items.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton isActive={item.active} tooltip={item.title}>
+                    <item.icon className="size-4" />
+                    <span>{item.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
+  );
+}
