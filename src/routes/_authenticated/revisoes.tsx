@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ratingOptions, stateLabels } from "@/lib/fsrs";
 import { createCard, listCards, reviewCard } from "@/lib/cards.functions";
-import { listThemes } from "@/lib/themes.functions";
+import { createTheme, listThemes } from "@/lib/themes.functions";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/revisoes")({
@@ -54,7 +54,9 @@ function RevisoesPage() {
   const fetchThemes = useServerFn(listThemes);
   const fetchCards = useServerFn(listCards);
   const addCard = useServerFn(createCard);
+  const createNewTheme = useServerFn(createTheme);
   const gradeCard = useServerFn(reviewCard);
+  const [themeName, setThemeName] = useState("");
   const [themeId, setThemeId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -73,6 +75,16 @@ function RevisoesPage() {
     void queryClient.invalidateQueries({ queryKey: ["cards"] });
     void queryClient.invalidateQueries({ queryKey: ["themes"] });
   };
+
+  const createThemeMutation = useMutation({
+    mutationFn: (name: string) => createNewTheme({ data: { name } }),
+    onSuccess: () => {
+      setThemeName("");
+      invalidate();
+      toast.success("Tema criado");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   const create = useMutation({
     mutationFn: (vars: { theme_id: string; pergunta: string; resposta: string }) =>
@@ -118,6 +130,38 @@ function RevisoesPage() {
 
           <main className="flex flex-1 justify-center p-6">
             <div className="w-full max-w-3xl">
+              <form
+                className="mb-6 grid gap-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (themeName.trim()) {
+                    createThemeMutation.mutate(themeName.trim());
+                  }
+                }}
+              >
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <label className="flex flex-col gap-2 text-sm text-muted-foreground">
+                    Novo tema
+                    <Input
+                      value={themeName}
+                      onChange={(event) => setThemeName(event.target.value)}
+                      placeholder="Nome do tema"
+                    />
+                  </label>
+                  <Button
+                    type="submit"
+                    disabled={createThemeMutation.isPending || !themeName.trim()}
+                  >
+                    {createThemeMutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    Criar tema
+                  </Button>
+                </div>
+              </form>
+
               <form
                 className="mb-6 grid gap-3"
                 onSubmit={(event) => {
