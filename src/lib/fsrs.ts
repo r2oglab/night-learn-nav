@@ -33,10 +33,8 @@ export type CardFields = {
   last_review: string | null;
 };
 
-export const ratings = [
-  { value: Rating.Again, label: "Errei" },
-  { value: Rating.Hard: 0 as never, label: "" },
-] as const;
+
+
 
 export function rowToCard(row: ThemeRow): Card {
   const empty = createEmptyCard();
