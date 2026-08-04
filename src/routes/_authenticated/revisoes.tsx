@@ -71,6 +71,20 @@ function RevisoesPage() {
     queryFn: () => fetchCards(),
   });
 
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const cardsToReview = cards.filter((card) => {
+    try {
+      const dueDate = new Date(`${card.due}T00:00:00`);
+      return dueDate <= todayStart;
+    } catch {
+      return false;
+    }
+  });
+
+  const reviewCount = cardsToReview.length;
+
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["cards"] });
     void queryClient.invalidateQueries({ queryKey: ["themes"] });
@@ -231,16 +245,18 @@ function RevisoesPage() {
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : cards.length === 0 ? (
+              ) : reviewCount === 0 ? (
                 <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                  Nenhum card ainda. Crie um card para começar a revisar.
+                  Nenhum card para revisar hoje.
                 </p>
               ) : (
-                <ul className="space-y-3">
-                  {cards.map((card) => {
-                    const diff = daysUntil(card.due);
-                    return (
-                      <li key={card.id} className="rounded-xl border border-border bg-card p-4">
+                <>
+                  <div className="mb-4 text-sm text-muted-foreground">{reviewCount} cards para revisar hoje</div>
+                  <ul className="space-y-3">
+                    {cardsToReview.map((card) => {
+                      const diff = daysUntil(card.due);
+                      return (
+                        <li key={card.id} className="rounded-xl border border-border bg-card p-4">
                         <div className="flex flex-wrap items-center gap-3">
                           <div>
                             <p className="font-medium">{card.pergunta}</p>
@@ -291,6 +307,7 @@ function RevisoesPage() {
                     );
                   })}
                 </ul>
+                </>
               )}
             </div>
           </main>

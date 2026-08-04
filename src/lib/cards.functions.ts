@@ -86,3 +86,24 @@ export const deleteCard = createServerFn({ method: "DELETE" })
     if (error) throw new Error(error.message);
     return deleted;
   });
+
+export const updateCard = createServerFn({ method: "PATCH" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; pergunta: string; resposta: string }) => {
+    if (!input.id?.trim()) throw new Error("ID do card inválido.");
+    const pergunta = input.pergunta?.trim();
+    const resposta = input.resposta?.trim();
+    if (!pergunta) throw new Error("Informe a pergunta do card.");
+    if (!resposta) throw new Error("Informe a resposta do card.");
+    return { id: input.id, pergunta, resposta };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: updated, error } = await context.supabase
+      .from("cards")
+      .update({ pergunta: data.pergunta, resposta: data.resposta })
+      .eq("id", data.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
+  });
