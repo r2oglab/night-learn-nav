@@ -1,8 +1,18 @@
-import { LayoutDashboard, Repeat, Layers, Settings, BrainCircuit } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import {
+  LayoutDashboard,
+  Repeat,
+  Layers,
+  Settings,
+  BrainCircuit,
+  LogIn,
+  LogOut,
+} from "lucide-react";
 
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -12,6 +22,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/hooks/useAuth";
 
 const items = [
   { title: "Dashboard", icon: LayoutDashboard, active: true },
@@ -23,6 +34,7 @@ const items = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const { user, signOut } = useAuth();
 
   return (
     <Sidebar collapsible="icon">
@@ -53,6 +65,25 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            {user ? (
+              <SidebarMenuButton onClick={() => signOut()} tooltip="Sair">
+                <LogOut className="size-4" />
+                <span className="truncate">{user.email ?? "Sair"}</span>
+              </SidebarMenuButton>
+            ) : (
+              <SidebarMenuButton asChild tooltip="Entrar">
+                <Link to="/auth">
+                  <LogIn className="size-4" />
+                  <span>Entrar</span>
+                </Link>
+              </SidebarMenuButton>
+            )}
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
