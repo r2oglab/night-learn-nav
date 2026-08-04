@@ -63,24 +63,36 @@ function Index() {
       const end = `${year}-${String(month + 1).padStart(2, "0")}-${daysInMonth}`;
       const { data, error } = await supabase
         .from("cards")
-        .select("id, theme_id, pergunta, resposta, due, state")
+        .select("id, theme_id, pergunta, resposta, due, state, last_review, themes(name)")
         .gte("due", start)
         .lte("due", end)
         .order("due", { ascending: true });
       if (error) throw error;
 
+      function isSameDay(a: Date, b: Date) {
+        return (
+          a.getFullYear() === b.getFullYear() &&
+          a.getMonth() === b.getMonth() &&
+          a.getDate() === b.getDate()
+        );
+      }
+
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
       const grouped: Record<number, Review[]> = {};
       for (const row of data ?? []) {
         const day = Number(row.due.slice(8, 10));
         const dueDate = new Date(`${row.due}T00:00:00`);
-        const status: Status = dueDate < new Date(now.getFullYear(), now.getMonth(), now.getDate())
-          ? "overdue"
-          : row.state !== 0
-            ? "done"
+        const lastReview = row.last_review ? new Date(row.last_review) : null;
+
+        const status: Status = lastReview && isSameDay(lastReview, todayStart)
+          ? "done"
+          : dueDate < todayStart
+            ? "overdue"
             : "pending";
 
         (grouped[day] ??= []).push({
-          theme: row.pergunta,
+          theme: row.themes?.name ?? row.pergunta,
           status,
         });
       }
