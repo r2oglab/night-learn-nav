@@ -34,42 +34,6 @@ type Review = { theme: string; status: Status };
 
 const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-// Dados fictícios: dia do mês -> revisões
-const mockReviews: Record<number, Review[]> = {
-  2: [{ theme: "Anatomia", status: "done" }],
-  3: [
-    { theme: "Inglês", status: "done" },
-    { theme: "História", status: "overdue" },
-  ],
-  5: [{ theme: "Química", status: "done" }],
-  8: [
-    { theme: "Física", status: "overdue" },
-    { theme: "Redação", status: "done" },
-    { theme: "Biologia", status: "done" },
-  ],
-  11: [{ theme: "Geografia", status: "done" }],
-  12: [
-    { theme: "Matemática", status: "overdue" },
-    { theme: "Inglês", status: "pending" },
-  ],
-  14: [{ theme: "Filosofia", status: "pending" }],
-  17: [
-    { theme: "Anatomia", status: "pending" },
-    { theme: "Química", status: "pending" },
-    { theme: "História", status: "pending" },
-    { theme: "Literatura", status: "pending" },
-  ],
-  19: [{ theme: "Física", status: "pending" }],
-  22: [
-    { theme: "Sociologia", status: "pending" },
-    { theme: "Biologia", status: "pending" },
-  ],
-  25: [{ theme: "Redação", status: "pending" }],
-  28: [
-    { theme: "Matemática", status: "pending" },
-    { theme: "Inglês", status: "pending" },
-  ],
-};
 
 const statusStyles: Record<Status, string> = {
   done: "bg-success/20 text-success border-success/30",
