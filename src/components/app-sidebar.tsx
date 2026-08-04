@@ -27,7 +27,7 @@ import { useAuth } from "@/hooks/useAuth";
 const items = [
   { title: "Dashboard", icon: LayoutDashboard, to: "/" as const },
   { title: "Revisões", icon: Repeat, to: "/revisoes" as const },
-  { title: "Flashcards", icon: Layers, to: undefined },
+  { title: "Flashcards", icon: Layers, to: "/flashcards" as const },
   { title: "Configurações", icon: Settings, to: undefined },
 ];
 

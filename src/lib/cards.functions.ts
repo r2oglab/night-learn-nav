@@ -69,3 +69,20 @@ export const reviewCard = createServerFn({ method: "POST" })
 
     return updated;
   });
+
+export const deleteCard = createServerFn({ method: "DELETE" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string }) => {
+    if (!input.id?.trim()) throw new Error("ID do card inválido.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const { data: deleted, error } = await context.supabase
+      .from("cards")
+      .delete()
+      .eq("id", data.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return deleted;
+  });
