@@ -1,8 +1,18 @@
-import { LayoutDashboard, Repeat, Layers, Settings, BrainCircuit } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import {
+  LayoutDashboard,
+  Repeat,
+  Layers,
+  Settings,
+  BrainCircuit,
+  LogIn,
+  LogOut,
+} from "lucide-react";
 
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -12,6 +22,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/hooks/useAuth";
 
 const items = [
   { title: "Dashboard", icon: LayoutDashboard, active: true },
