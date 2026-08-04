@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { listThemes, deleteTheme } from "@/lib/themes.functions";
+import { listThemes, deleteTheme, updateTheme } from "@/lib/themes.functions";
 import { listCards, deleteCard, updateCard } from "@/lib/cards.functions";
 
 export const Route = createFileRoute("/_authenticated/flashcards")({
@@ -53,6 +53,21 @@ function FlashcardsPage() {
       void queryClient.invalidateQueries({ queryKey: ["themes"] });
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       toast.success("Tema excluído");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
+  const [editingThemeName, setEditingThemeName] = useState("");
+
+  const updateThemeServer = useServerFn(updateTheme);
+  const updateThemeMutation = useMutation({
+    mutationFn: (vars: { id: string; name: string }) => updateThemeServer({ data: vars }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["themes"] });
+      setEditingThemeId(null);
+      setEditingThemeName("");
+      toast.success("Tema atualizado");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -102,22 +117,48 @@ function FlashcardsPage() {
                     return (
                       <section key={theme.id} className="rounded-xl border border-border bg-card p-4">
                         <div className="mb-3 flex items-center justify-between">
-                          <h2 className="text-sm font-medium">{theme.name}</h2>
-                          <div>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => {
-                                const count = themeCards.length;
-                                const ok = window.confirm(
-                                  `Excluir tema "${theme.name}"? Isso também removerá ${count} card(s) deste tema.`,
-                                );
-                                if (ok) removeTheme.mutate(theme.id);
-                              }}
-                            >
-                              Excluir tema
-                            </Button>
-                          </div>
+                          {editingThemeId === theme.id ? (
+                            <div className="flex items-center gap-2 w-full">
+                              <Input value={editingThemeName} onChange={(e) => setEditingThemeName(e.target.value)} />
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => updateThemeMutation.mutate({ id: theme.id, name: editingThemeName })}>
+                                  Salvar
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setEditingThemeId(null)}>
+                                  Cancelar
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <h2 className="text-sm font-medium">{theme.name}</h2>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingThemeId(theme.id);
+                                    setEditingThemeName(theme.name);
+                                  }}
+                                >
+                                  Editar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => {
+                                    const count = themeCards.length;
+                                    const ok = window.confirm(
+                                      `Excluir tema "${theme.name}"? Isso também removerá ${count} card(s) deste tema.`,
+                                    );
+                                    if (ok) removeTheme.mutate(theme.id);
+                                  }}
+                                >
+                                  Excluir tema
+                                </Button>
+                              </div>
+                            </>
+                          )}
                         </div>
                         {themeCards.length === 0 ? (
                           <p className="text-sm text-muted-foreground">Nenhum card neste tema.</p>

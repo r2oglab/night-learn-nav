@@ -39,3 +39,24 @@ export const deleteTheme = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+export const updateTheme = createServerFn({ method: "PATCH" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; name: string }) => {
+    const id = input.id?.trim();
+    const name = input.name?.trim();
+    if (!id) throw new Error("ID do tema inválido.");
+    if (!name) throw new Error("Informe o nome do tema.");
+    if (name.length > 80) throw new Error("Nome muito longo.");
+    return { id, name };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await context.supabase
+      .from("themes")
+      .update({ name: data.name })
+      .eq("id", data.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return row;
+  });

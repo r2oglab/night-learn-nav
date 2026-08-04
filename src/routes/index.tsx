@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -47,20 +48,24 @@ const legend: { label: string; status: Status }[] = [
   { label: "Pendente", status: "pending" },
 ];
 
-const now = new Date();
-const year = now.getFullYear();
-const month = now.getMonth();
-const monthLabel = now.toLocaleString("pt-BR", { month: "long", year: "numeric" });
-const daysInMonth = new Date(year, month + 1, 0).getDate();
-const firstWeekday = new Date(year, month, 1).getDay();
-const today = now.getDate();
+// current real time (used for determining "today")
+const realNow = new Date();
 
 function Index() {
+  const [viewYear, setViewYear] = useState(realNow.getFullYear());
+  const [viewMonth, setViewMonth] = useState(realNow.getMonth());
+
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleString("pt-BR", { month: "long", year: "numeric" });
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstWeekday = new Date(viewYear, viewMonth, 1).getDay();
+  const isViewingCurrentMonth = viewYear === realNow.getFullYear() && viewMonth === realNow.getMonth();
+  const today = isViewingCurrentMonth ? realNow.getDate() : null;
+
   const { data: reviewsByDay = {}, isLoading } = useQuery({
-    queryKey: ["cards", year, month],
+    queryKey: ["cards", viewYear, viewMonth],
     queryFn: async () => {
-      const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
-      const end = `${year}-${String(month + 1).padStart(2, "0")}-${daysInMonth}`;
+      const start = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-01`;
+      const end = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${daysInMonth}`;
 
       // Busca 1: por due (decide only between overdue and pending)
       const { data: dueData, error: dueError } = await supabase
@@ -86,7 +91,7 @@ function Index() {
         return Number(iso.slice(8, 10));
       }
 
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayStart = new Date(realNow.getFullYear(), realNow.getMonth(), realNow.getDate());
 
       type DayEntry = { id: string; theme: string; statuses: Status[]; labelDate?: string };
       const grouped: Record<number, DayEntry[]> = {};
@@ -175,13 +180,38 @@ function Index() {
                 <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
                 {isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
                 <div className="ml-auto flex items-center gap-2">
-                  <Button variant="outline" size="icon" className="size-8">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => {
+                      const d = new Date(viewYear, viewMonth - 1, 1);
+                      setViewYear(d.getFullYear());
+                      setViewMonth(d.getMonth());
+                    }}
+                  >
                     <ChevronLeft className="size-4" />
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setViewYear(realNow.getFullYear());
+                      setViewMonth(realNow.getMonth());
+                    }}
+                  >
                     Hoje
                   </Button>
-                  <Button variant="outline" size="icon" className="size-8">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => {
+                      const d = new Date(viewYear, viewMonth + 1, 1);
+                      setViewYear(d.getFullYear());
+                      setViewMonth(d.getMonth());
+                    }}
+                  >
                     <ChevronRight className="size-4" />
                   </Button>
                 </div>
