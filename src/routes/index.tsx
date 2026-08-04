@@ -47,33 +47,41 @@ const legend: { label: string; status: Status }[] = [
   { label: "Pendente", status: "pending" },
 ];
 
-const year = 2026;
-const month = 7; // Agosto
-const monthLabel = "Agosto 2026";
+const now = new Date();
+const year = now.getFullYear();
+const month = now.getMonth();
+const monthLabel = now.toLocaleString("pt-BR", { month: "long", year: "numeric" });
 const daysInMonth = new Date(year, month + 1, 0).getDate();
 const firstWeekday = new Date(year, month, 1).getDay();
-const today = 4;
+const today = now.getDate();
 
 function Index() {
   const { data: reviewsByDay = {}, isLoading } = useQuery({
-    queryKey: ["revisions", year, month],
+    queryKey: ["cards", year, month],
     queryFn: async () => {
       const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
       const end = `${year}-${String(month + 1).padStart(2, "0")}-${daysInMonth}`;
       const { data, error } = await supabase
-        .from("revisions")
-        .select("theme, scheduled_date, status")
-        .gte("scheduled_date", start)
-        .lte("scheduled_date", end)
-        .order("scheduled_date", { ascending: true });
+        .from("cards")
+        .select("id, theme_id, pergunta, resposta, due, state")
+        .gte("due", start)
+        .lte("due", end)
+        .order("due", { ascending: true });
       if (error) throw error;
 
       const grouped: Record<number, Review[]> = {};
       for (const row of data ?? []) {
-        const day = Number(row.scheduled_date.slice(8, 10));
+        const day = Number(row.due.slice(8, 10));
+        const dueDate = new Date(`${row.due}T00:00:00`);
+        const status: Status = dueDate < new Date(now.getFullYear(), now.getMonth(), now.getDate())
+          ? "overdue"
+          : row.state !== 0
+            ? "done"
+            : "pending";
+
         (grouped[day] ??= []).push({
-          theme: row.theme,
-          status: row.status as Status,
+          theme: row.pergunta,
+          status,
         });
       }
       return grouped;
