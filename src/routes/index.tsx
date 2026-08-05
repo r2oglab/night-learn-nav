@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link  } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
@@ -235,6 +235,20 @@ function Index() {
     ...heatmap.map((pct: number) => ({ pct })),
   ];
   while (heatCells.length % 7 !== 0) heatCells.push(null);
+  // Overdue count: cards strictly before today, regardless of which month is
+  // being viewed — mirrors the same "atrasado" definition used em Revisões.
+  const { data: overdueCount = 0 } = useQuery({
+    queryKey: ["overdue-count", heatEndISO],
+    enabled: dateReady,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("cards")
+        .select("id", { count: "exact", head: true })
+        .lt("due", heatEndISO);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
 
 
   return (
@@ -294,7 +308,17 @@ function Index() {
                   </Button>
                 </div>
               </div>
-
+              {overdueCount > 0 && (
+                <Link
+                  to="/revisoes"
+                  className="mb-4 flex items-center justify-between rounded-xl border border-overdue/30 bg-overdue/10 px-4 py-3 text-sm text-overdue transition-colors hover:bg-overdue/20"
+                >
+                  <span className="font-medium">
+                    {overdueCount} card{overdueCount === 1 ? "" : "s"} atrasado{overdueCount === 1 ? "" : "s"}
+                  </span>
+                  <span className="text-xs underline">Revisar agora</span>
+                </Link>
+              )}
               <div className="mb-4 grid grid-cols-[auto_160px] items-stretch gap-4 overflow-x-auto">
              {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
                 <div className="inline-flex flex-col justify-center gap-1.5 justify-self-start rounded-xl border border-border bg-card p-3">
