@@ -181,13 +181,14 @@ function Index() {
     enabled: !decksLoading,
     retry: 2,
     queryFn: async () => {
-      const { data: dueData } = await supabase
+      const { data: dueData, error: heatError } = await supabase
         .from("cards")
         .select("id,due,last_review")
         .gte("due", heatStartISO)
         .lte("due", heatEndISO);
 
       console.log("[heatmap] dueData (últimos 35 dias):", dueData);
+      console.log("[heatmap] error:", heatError);
 
       const dayMap: Record<string, { due: number; reviewed: number }> = {};
       for (let i = 0; i < 35; i++) {
