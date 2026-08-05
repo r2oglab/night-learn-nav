@@ -166,50 +166,52 @@ function FlashcardsPage() {
           )}
         </div>
 
-        {/* Always render this deck's own cards */}
-        {deckCards.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum card neste deck.</p>
-        ) : (
-          <ul className="space-y-3">
-            {deckCards.map((card: any) => (
-              <li key={card.id} className="flex items-start justify-between gap-4">
-                {editingId === card.id ? (
-                  <div className="flex-1">
-                    <label className="flex flex-col gap-2">
-                      <Input value={editingQuestion} onChange={(e) => setEditingQuestion(e.target.value)} />
-                      <Input value={editingAnswer} onChange={(e) => setEditingAnswer(e.target.value)} />
-                    </label>
-                    <div className="mt-2 flex gap-2">
-                      <Button size="sm" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate({ id: card.id, pergunta: editingQuestion, resposta: editingAnswer })}>
-                        Salvar
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancelar</Button>
+        {/* Render this deck's own cards when it's a leaf, or when expanded alongside its subdecks */}
+        {(children.length === 0 || isOpen) && (
+          deckCards.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum card neste deck.</p>
+          ) : (
+            <ul className="space-y-3">
+              {deckCards.map((card: any) => (
+                <li key={card.id} className="flex items-start justify-between gap-4">
+                  {editingId === card.id ? (
+                    <div className="flex-1">
+                      <label className="flex flex-col gap-2">
+                        <Input value={editingQuestion} onChange={(e) => setEditingQuestion(e.target.value)} />
+                        <Input value={editingAnswer} onChange={(e) => setEditingAnswer(e.target.value)} />
+                      </label>
+                      <div className="mt-2 flex gap-2">
+                        <Button size="sm" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate({ id: card.id, pergunta: editingQuestion, resposta: editingAnswer })}>
+                          Salvar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancelar</Button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <p className="font-medium">{card.pergunta}</p>
-                      <p className="text-sm text-muted-foreground">{card.resposta}</p>
-                      <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => {
-                        setEditingId(card.id);
-                        setEditingQuestion(card.pergunta);
-                        setEditingAnswer(card.resposta);
-                      }}>
-                        <Edit3 className="size-4" /> Editar
-                      </Button>
-                      <Button size="sm" variant="destructive" disabled={delMutation.isPending} onClick={() => delMutation.mutate(card.id)}>
-                        <Trash className="size-4" /> Excluir
-                      </Button>
-                    </div>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="font-medium">{card.pergunta}</p>
+                        <p className="text-sm text-muted-foreground">{card.resposta}</p>
+                        <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setEditingId(card.id);
+                          setEditingQuestion(card.pergunta);
+                          setEditingAnswer(card.resposta);
+                        }}>
+                          <Edit3 className="size-4" /> Editar
+                        </Button>
+                        <Button size="sm" variant="destructive" disabled={delMutation.isPending} onClick={() => delMutation.mutate(card.id)}>
+                          <Trash className="size-4" /> Excluir
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
         )}
 
         {/* Render subdecks below, when expanded */}
