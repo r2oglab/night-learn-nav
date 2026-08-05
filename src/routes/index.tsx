@@ -183,7 +183,7 @@ function Index() {
       for (let i = 0; i < 35; i++) {
         const d = new Date(heatStart);
         d.setDate(d.getDate() + i);
-        const key = d.toISOString().slice(0, 10);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         dayMap[key] = { due: 0, reviewed: 0 };
       }
 
@@ -200,7 +200,7 @@ function Index() {
       for (let i = 0; i < 35; i++) {
         const d = new Date(heatStart);
         d.setDate(d.getDate() + i);
-        const key = d.toISOString().slice(0, 10);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         const stats = dayMap[key] ?? { due: 0, reviewed: 0 };
         const pct = stats.due === 0 ? 0 : Math.round((stats.reviewed / stats.due) * 100);
         arr.push(pct);
