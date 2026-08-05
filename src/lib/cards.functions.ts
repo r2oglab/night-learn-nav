@@ -30,6 +30,12 @@ export const getHeatmapData = createServerFn({ method: "POST" })
       .gte("due", data.start)
       .lte("due", data.end);
     if (error) throw new Error(error.message);
+
+    const { data: allRows } = await context.supabase
+      .from("cards")
+      .select("id,due,last_review")
+      .limit(10);
+
     return {
       rows: rows ?? [],
       debug: {
@@ -37,6 +43,8 @@ export const getHeatmapData = createServerFn({ method: "POST" })
         receivedEnd: data.end,
         userId: context.userId,
         rowCount: (rows ?? []).length,
+        unfilteredCount: (allRows ?? []).length,
+        unfilteredSample: (allRows ?? []).slice(0, 3),
       },
     };
   });
