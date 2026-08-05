@@ -30,7 +30,15 @@ export const getHeatmapData = createServerFn({ method: "POST" })
       .gte("due", data.start)
       .lte("due", data.end);
     if (error) throw new Error(error.message);
-    return rows ?? [];
+    return {
+      rows: rows ?? [],
+      debug: {
+        receivedStart: data.start,
+        receivedEnd: data.end,
+        userId: context.userId,
+        rowCount: (rows ?? []).length,
+      },
+    };
   });
 
 export const createCard = createServerFn({ method: "POST" })

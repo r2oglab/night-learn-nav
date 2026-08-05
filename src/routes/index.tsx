@@ -207,8 +207,9 @@ function Index() {
     retry: 2,
     queryFn: async () => {
       console.log("[heatmap] chamando fetchHeatmapData com:", { heatStartISO, heatEndISO });
-      const dueData = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
-      console.log("[heatmap] dueData retornado:", dueData, "length:", dueData.length);
+      const resultado = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
+      console.log("[heatmap] resposta completa do servidor:", resultado);
+      const dueData = resultado.rows;
 
       const dayMap: Record<string, { due: number; reviewed: number }> = {};
       for (let i = 0; i < 35; i++) {
