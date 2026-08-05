@@ -302,22 +302,22 @@ function Index() {
               </div>
 
               <div className="mb-4 grid grid-cols-[auto_120px] items-start gap-4 overflow-x-auto">
-                {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
-                <div className="inline-flex flex-col gap-1">
-                  <div className="grid grid-cols-7 gap-1">
+             {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
+                <div className="inline-flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3">
+                  <div className="grid grid-cols-7 gap-1.5">
                     {weekDays.map((d) => (
-                      <div key={d} className="size-4 text-center text-[9px] font-medium uppercase leading-4 text-muted-foreground">
+                      <div key={d} className="size-6 text-center text-[10px] font-medium uppercase leading-6 text-muted-foreground">
                         {d[0]}
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-7 gap-1">
+                  <div className="grid grid-cols-7 gap-1.5">
                     {heatCells.map((cell, idx) => {
-                      if (!cell) return <div key={idx} className="size-4" />;
+                      if (!cell) return <div key={idx} className="size-6" />;
                       const bucket = cell.pct >= 100 ? 4 : cell.pct >= 75 ? 3 : cell.pct >= 50 ? 2 : cell.pct >= 25 ? 1 : 0;
                       const colors = ["bg-muted/30", "bg-emerald-100", "bg-emerald-300", "bg-emerald-500", "bg-emerald-700"];
                       return (
-                        <div key={idx} title={`${cell.pct}%`} className={`size-4 rounded ${colors[bucket]}`} />
+                        <div key={idx} title={`${cell.pct}%`} className={`size-6 rounded ${colors[bucket]}`} />
                       );
                     })}
                   </div>
