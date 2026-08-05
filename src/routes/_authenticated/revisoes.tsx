@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ratingOptions, stateLabels } from "@/lib/fsrs";
 import { createCard, listCards, reviewCard } from "@/lib/cards.functions";
-import { createTheme, listThemes } from "@/lib/themes.functions";
+import { createDeck, listDecks } from "@/lib/decks.functions";
 import { cn } from "@/lib/utils";
 import ReviewSession from "@/components/review-session";
 
@@ -52,20 +52,20 @@ function daysUntil(due: string) {
 
 function RevisoesPage() {
   const queryClient = useQueryClient();
-  const fetchThemes = useServerFn(listThemes);
+  const fetchDecks = useServerFn(listDecks);
   const fetchCards = useServerFn(listCards);
   const addCard = useServerFn(createCard);
-  const createNewTheme = useServerFn(createTheme);
+  const createNewDeck = useServerFn(createDeck);
   const gradeCard = useServerFn(reviewCard);
-  const [themeName, setThemeName] = useState("");
-  const [themeId, setThemeId] = useState("");
+  const [deckName, setDeckName] = useState("");
+  const [deckId, setDeckId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [deckPath, setDeckPath] = useState("");
 
-  const { data: themes = [], isLoading: themesLoading } = useQuery({
-    queryKey: ["themes"],
-    queryFn: () => fetchThemes(),
+  const { data: decks = [], isLoading: decksLoading } = useQuery({
+    queryKey: ["decks"],
+    queryFn: () => fetchDecks(),
   });
 
   const { data: cards = [], isLoading: cardsLoading } = useQuery({
@@ -90,26 +90,26 @@ function RevisoesPage() {
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["cards"] });
-    void queryClient.invalidateQueries({ queryKey: ["themes"] });
+    void queryClient.invalidateQueries({ queryKey: ["decks"] });
   };
 
-  const createThemeMutation = useMutation({
-    mutationFn: (name: string) => createNewTheme({ data: { path: name } }),
+  const createDeckMutation = useMutation({
+    mutationFn: (name: string) => createNewDeck({ data: { path: name } }),
     onSuccess: () => {
-      setThemeName("");
+      setDeckName("");
       invalidate();
-      toast.success("Tema criado");
+      toast.success("Deck criado");
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const create = useMutation({
-    mutationFn: (vars: { theme_id: string; pergunta: string; resposta: string }) =>
+    mutationFn: (vars: { deck_id: string; pergunta: string; resposta: string }) =>
       addCard({ data: vars }),
     onSuccess: () => {
       setQuestion("");
       setAnswer("");
-      setThemeId("");
+      setDeckId("");
       invalidate();
       toast.success("Card adicionado");
     },
@@ -128,7 +128,7 @@ function RevisoesPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const themeMap = Object.fromEntries(themes.map((theme) => [theme.id, theme.name]));
+  const deckMap = Object.fromEntries(decks.map((deck) => [deck.id, deck.name]));
 
   return (
     <SidebarProvider>
@@ -163,30 +163,30 @@ function RevisoesPage() {
                 className="mb-6 grid gap-3"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (themeName.trim()) {
-                    createThemeMutation.mutate(themeName.trim());
+                  if (deckName.trim()) {
+                    createDeckMutation.mutate(deckName.trim());
                   }
                 }}
               >
                 <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                   <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                    Novo tema
+                    Novo deck
                     <Input
-                      value={themeName}
-                      onChange={(event) => setThemeName(event.target.value)}
-                      placeholder="Nome do tema"
+                      value={deckName}
+                      onChange={(event) => setDeckName(event.target.value)}
+                      placeholder="Nome do deck"
                     />
                   </label>
                   <Button
                     type="submit"
-                    disabled={createThemeMutation.isPending || !themeName.trim()}
+                    disabled={createDeckMutation.isPending || !deckName.trim()}
                   >
-                    {createThemeMutation.isPending ? (
+                    {createDeckMutation.isPending ? (
                       <Loader2 className="size-4 animate-spin" />
                     ) : (
                       <Plus className="size-4" />
                     )}
-                    Criar tema
+                    Criar deck
                   </Button>
                 </div>
               </form>
@@ -200,9 +200,9 @@ function RevisoesPage() {
                   if (!question.trim() || !answer.trim()) return;
 
                   try {
-                    const themeRow = await createNewTheme({ data: { path: deck } });
-                    if (!themeRow?.id) throw new Error("Não foi possível resolver/usar o tema.");
-                    create.mutate({ theme_id: themeRow.id, pergunta: question.trim(), resposta: answer.trim() });
+                    const deckRow = await createNewDeck({ data: { path: deck } });
+                    if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
+                    create.mutate({ deck_id: deckRow.id, pergunta: question.trim(), resposta: answer.trim() });
                   } catch (err: any) {
                     toast.error(err?.message ?? String(err));
                   }
@@ -247,13 +247,13 @@ function RevisoesPage() {
                 </Button>
               </form>
 
-              {themesLoading ? (
+              {decksLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : themes.length === 0 ? (
+              ) : decks.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                  Crie um tema antes de adicionar cards. O grupo de temas mantém apenas nomes e agrupamentos.
+                  Crie um deck antes de adicionar cards. O grupo de decks mantém apenas nomes e agrupamentos.
                 </p>
               ) : cardsLoading ? (
                 <div className="flex justify-center py-12">
@@ -289,7 +289,7 @@ function RevisoesPage() {
                             <p className="text-sm text-muted-foreground">{card.resposta}</p>
                           </div>
                           <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {themeMap[card.theme_id] ?? "Tema desconhecido"}
+                            {deckMap[card.deck_id] ?? "Deck desconhecido"}
                           </span>
                           <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
                             {stateLabels[card.state] ?? "Novo"}

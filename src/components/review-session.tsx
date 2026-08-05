@@ -41,7 +41,7 @@ export function ReviewSession({
     try {
       await grade({ data: { id: current.id, rating } });
       void qc.invalidateQueries({ queryKey: ["cards"] });
-      void qc.invalidateQueries({ queryKey: ["themes"] });
+      void qc.invalidateQueries({ queryKey: ["decks"] });
       setRevealed(false);
       const next = index + 1;
       if (next >= cards.length) {

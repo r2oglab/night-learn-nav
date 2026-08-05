@@ -10,7 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { getUserSettings, upsertUserSettings } from "@/lib/user_settings.functions";
 import { listCards } from "@/lib/cards.functions";
+<<<<<<< HEAD
 import { listThemes } from "@/lib/themes.functions";
+=======
+import { listDecks } from "@/lib/decks.functions";
+import { saveAs } from "file-saver";
+>>>>>>> 1f53da8 (decks 1.2)
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/configuracoes")({
@@ -23,10 +28,10 @@ function Configuracoes() {
   const qc = useQueryClient();
   const fetchSettings = useServerFn(getUserSettings);
   const fetchCards = useServerFn(listCards);
-  const fetchThemes = useServerFn(listThemes);
+  const fetchDecks = useServerFn(listDecks);
 
   const { data: settings } = useQuery({ queryKey: ["user_settings"], queryFn: () => fetchSettings() });
-  const { data: themes = [] } = useQuery({ queryKey: ["themes"], queryFn: () => fetchThemes() });
+  const { data: decks = [] } = useQuery({ queryKey: ["decks"], queryFn: () => fetchDecks() });
 
   const upsertFn = useServerFn(upsertUserSettings);
   const upsertMutation = useMutation({ mutationFn: (vars: any) => upsertFn({ data: vars }), onSuccess: () => { void qc.invalidateQueries({ queryKey: ["user_settings"] }); toast.success("Configurações salvas"); } });
@@ -35,10 +40,15 @@ function Configuracoes() {
     try {
       const cards = await fetchCards();
       const userCards = cards.filter((c: any) => c.user_id === user?.id);
-      const themeById = Object.fromEntries((themes || []).map((t: any) => [t.id, t]));
+      const deckById = Object.fromEntries((decks || []).map((t: any) => [t.id, t]));
 
+<<<<<<< HEAD
       const rows: Record<string, any>[] = userCards.map((c: any) => ({
         tema: themeById[c.theme_id]?.name ?? c.theme_id,
+=======
+      const rows = userCards.map((c: any) => ({
+        deck: deckById[c.deck_id]?.name ?? c.deck_id,
+>>>>>>> 1f53da8 (decks 1.2)
         pergunta: c.pergunta,
         resposta: c.resposta,
         due: c.due,
@@ -46,7 +56,7 @@ function Configuracoes() {
         difficulty: c.difficulty,
       }));
 
-      const header = ["tema","pergunta","resposta","due","stability","difficulty"];
+      const header = ["deck","pergunta","resposta","due","stability","difficulty"];
       const csv = [header.join(",")].concat(rows.map((r) => header.map((h) => JSON.stringify(r[h] ?? "")).join(","))).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { createCard } from "@/lib/cards.functions";
-import { createTheme } from "@/lib/themes.functions";
+import { createDeck } from "@/lib/decks.functions";
 
 export const Route = createFileRoute("/_authenticated/criacao")({
   component: CriacaoPage,
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/_authenticated/criacao")({
 function CriacaoPage() {
   const queryClient = useQueryClient();
   const addCard = useServerFn(createCard);
-  const createNewTheme = useServerFn(createTheme);
+  const createNewDeck = useServerFn(createDeck);
 
   const [deckPath, setDeckPath] = useState("");
   const [question, setQuestion] = useState("");
@@ -30,14 +30,14 @@ function CriacaoPage() {
   const [cloze, setCloze] = useState(false);
 
   const create = useMutation({
-    mutationFn: (vars: { theme_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) =>
+    mutationFn: (vars: { deck_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) =>
       addCard({ data: vars }),
     onSuccess: () => {
       setDeckPath("");
       setQuestion("");
       setAnswer("");
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
-      void queryClient.invalidateQueries({ queryKey: ["themes"] });
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
       toast.success("Card adicionado");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -65,9 +65,9 @@ function CriacaoPage() {
                   if (!question.trim() || (!cloze && !answer.trim())) return;
 
                   try {
-                    const themeRow = await createNewTheme({ data: { path: deck } });
-                    if (!themeRow?.id) throw new Error("Não foi possível resolver/usar o tema.");
-                    create.mutate({ theme_id: themeRow.id, pergunta: question.trim(), resposta: answer.trim(), invert, cloze });
+                      const deckRow = await createNewDeck({ data: { path: deck } });
+                    if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
+                    create.mutate({ deck_id: deckRow.id, pergunta: question.trim(), resposta: answer.trim(), invert, cloze });
                   } catch (err: any) {
                     toast.error(err?.message ?? String(err));
                   }

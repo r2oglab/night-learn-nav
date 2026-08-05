@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { listThemes } from "@/lib/themes.functions";
+import { listDecks } from "@/lib/decks.functions";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 export const Route = createFileRoute("/")({
@@ -34,7 +34,7 @@ export const Route = createFileRoute("/")({
 });
 
 type Status = "done" | "overdue" | "pending";
-type Review = { theme: string; statuses: Status[] };
+type Review = { deck: string; statuses: Status[] };
 
 const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -64,17 +64,17 @@ function Index() {
   const isViewingCurrentMonth = viewYear === realNow.getFullYear() && viewMonth === realNow.getMonth();
   const today = isViewingCurrentMonth ? realNow.getDate() : null;
 
-  const fetchThemes = useServerFn(listThemes);
-  const { data: allThemes = [], isLoading: themesLoading } = useQuery({
-    queryKey: ["themes"],
-    queryFn: () => fetchThemes(),
+  const fetchDecks = useServerFn(listDecks);
+  const { data: allDecks = [], isLoading: decksLoading } = useQuery({
+    queryKey: ["decks"],
+    queryFn: () => fetchDecks(),
   });
 
   const [showOthersDay, setShowOthersDay] = useState<number | null>(null);
 
   const { data: reviewsByDay = {}, isLoading } = useQuery({
-    queryKey: ["cards", viewYear, viewMonth, /* depends on themes */ allThemes.length],
-    enabled: !themesLoading,
+    queryKey: ["cards", viewYear, viewMonth, /* depends on decks */ allDecks.length],
+    enabled: !decksLoading,
     queryFn: async () => {
       const start = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-01`;
       const end = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${daysInMonth}`;
@@ -82,7 +82,7 @@ function Index() {
       // Busca 1: por due (decide only between overdue and pending)
       const { data: dueData, error: dueError } = await supabase
         .from("cards")
-        .select("id, theme_id, pergunta, resposta, due, state, last_review, themes(name)")
+        .select("id, deck_id, pergunta, resposta, due, state, last_review, decks(name)")
         .gte("due", start)
         .lte("due", end)
         .order("due", { ascending: true });
@@ -91,7 +91,7 @@ function Index() {
       // Busca 2: por last_review (done only on the exact review day)
       const { data: reviewData, error: reviewError } = await supabase
         .from("cards")
-        .select("id, theme_id, pergunta, resposta, last_review, themes(name)")
+        .select("id, deck_id, pergunta, resposta, last_review, decks(name)")
         .not("last_review", "is", null)
         .gte("last_review", start)
         .lte("last_review", end)
@@ -105,21 +105,21 @@ function Index() {
 
       const todayStart = new Date(realNow.getFullYear(), realNow.getMonth(), realNow.getDate());
 
-      type DayEntry = { id: string; theme: string; statuses: Status[]; labelDate?: string };
-      // Build theme map to resolve root themes
-      const themeById = Object.fromEntries((allThemes ?? []).map((t: any) => [t.id, t]));
+      type DayEntry = { id: string; deck: string; statuses: Status[]; labelDate?: string };
+      // Build deck map to resolve root decks
+      const deckById = Object.fromEntries((allDecks ?? []).map((t: any) => [t.id, t]));
 
-      function findRootName(themeId?: string, fallback?: string) {
-        if (!themeId) return fallback ?? "(sem tema)";
-        let cur = themeById[themeId];
-        if (!cur) return fallback ?? "(sem tema)";
+      function findRootName(deckId?: string, fallback?: string) {
+        if (!deckId) return fallback ?? "(sem deck)";
+        let cur = deckById[deckId];
+        if (!cur) return fallback ?? "(sem deck)";
         while (cur && cur.parent_id) {
-          cur = themeById[cur.parent_id];
+          cur = deckById[cur.parent_id];
         }
-        return cur?.name ?? fallback ?? "(sem tema)";
+        return cur?.name ?? fallback ?? "(sem deck)";
       }
 
-      type DayGroup = { theme: string; counts: Record<Status, number>; total: number };
+      type DayGroup = { deck: string; counts: Record<Status, number>; total: number };
       const grouped: Record<number, Map<string, DayGroup>> = {};
 
       // process dueData: decide only between overdue and pending
@@ -129,10 +129,10 @@ function Index() {
         const dueDate = new Date(`${row.due}T00:00:00`);
 
         const status: Status = dueDate < todayStart ? "overdue" : "pending";
-        const rootName = findRootName(row.theme_id, row.themes?.name ?? row.pergunta);
+        const rootName = findRootName(row.deck_id, row.decks?.name ?? row.pergunta);
         grouped[day] = grouped[day] ?? new Map();
         const m = grouped[day];
-        const prev = m.get(rootName) ?? { theme: rootName, counts: { done: 0, overdue: 0, pending: 0 }, total: 0 };
+        const prev = m.get(rootName) ?? { deck: rootName, counts: { done: 0, overdue: 0, pending: 0 }, total: 0 };
         prev.counts[status] = (prev.counts[status] ?? 0) + 1;
         prev.total += 1;
         m.set(rootName, prev);
@@ -142,10 +142,10 @@ function Index() {
       for (const row of reviewData ?? []) {
         const day = dayFromISO(row.last_review);
         if (!day) continue;
-        const rootName = findRootName(row.theme_id, row.themes?.name ?? row.pergunta);
+        const rootName = findRootName(row.deck_id, row.decks?.name ?? row.pergunta);
         grouped[day] = grouped[day] ?? new Map();
         const m = grouped[day];
-        const prev = m.get(rootName) ?? { theme: rootName, counts: { done: 0, overdue: 0, pending: 0 }, total: 0 };
+        const prev = m.get(rootName) ?? { deck: rootName, counts: { done: 0, overdue: 0, pending: 0 }, total: 0 };
         prev.counts["done"] = (prev.counts["done"] ?? 0) + 1;
         prev.total += 1;
         m.set(rootName, prev);
@@ -171,7 +171,7 @@ function Index() {
 
   const { data: heatmap = [], isLoading: heatLoading } = useQuery({
     queryKey: ["heatmap", heatStartISO, heatEndISO],
-    enabled: !themesLoading,
+    enabled: !decksLoading,
     queryFn: async () => {
       const { data: dueData } = await supabase
         .from("cards")
@@ -366,13 +366,13 @@ function Index() {
                             </span>
                           </div>
                           <div className="space-y-1">
-                            {/* reviewsByDay[day] is an array of DayGroup {theme, total, counts} */}
+                            {/* reviewsByDay[day] is an array of DayGroup {deck, total, counts} */}
                             {((reviewsByDay[day] ?? []) as any[]).map((group, idx) => {
                               // show only top 2; rest will be in 'Outros'
                               if (idx < 2) {
                                 return (
-                                  <div key={group.theme} className="truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium">
-                                    {group.theme} · {group.total}
+                                  <div key={group.deck} className="truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium">
+                                    {group.deck} · {group.total}
                                   </div>
                                 );
                               }
@@ -383,7 +383,7 @@ function Index() {
                               if (!groups || groups.length <= 2) return null;
                               const others = groups.slice(2);
                               const otherCount = others.length;
-                              const title = others.map((g) => `${g.theme} · ${g.total}`).join("\n");
+                              const title = others.map((g) => `${g.deck} · ${g.total}`).join("\n");
                               return (
                                 <div className="mt-1">
                                   <button
@@ -396,8 +396,8 @@ function Index() {
                                   {showOthersDay === day && (
                                     <div className="mt-2 rounded border border-border bg-popover p-2 text-xs">
                                       {others.map((g) => (
-                                        <div key={g.theme} className="flex justify-between">
-                                          <span>{g.theme}</span>
+                                        <div key={g.deck} className="flex justify-between">
+                                          <span>{g.deck}</span>
                                           <span className="text-muted-foreground">{g.total}</span>
                                         </div>
                                       ))}

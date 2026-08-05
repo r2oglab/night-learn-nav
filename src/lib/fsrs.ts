@@ -22,7 +22,7 @@ export type CardRow = {
   last_review: string | null;
 };
 
-export type ThemeRow = CardRow;
+export type DeckRow = CardRow;
 
 export type CardFields = {
   due: string;

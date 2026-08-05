@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { listThemes, deleteTheme, updateTheme } from "@/lib/themes.functions";
+import { listDecks, deleteDeck, updateDeck } from "@/lib/decks.functions";
 import { listCards, deleteCard, updateCard } from "@/lib/cards.functions";
 
 export const Route = createFileRoute("/_authenticated/flashcards")({
@@ -19,13 +19,13 @@ export const Route = createFileRoute("/_authenticated/flashcards")({
 
 function FlashcardsPage() {
   const queryClient = useQueryClient();
-  const fetchThemes = useServerFn(listThemes);
+  const fetchDecks = useServerFn(listDecks);
   const fetchCards = useServerFn(listCards);
   const removeCard = useServerFn(deleteCard);
 
-  const { data: themes = [], isLoading: themesLoading } = useQuery({
-    queryKey: ["themes"],
-    queryFn: () => fetchThemes(),
+  const { data: decks = [], isLoading: decksLoading } = useQuery({
+    queryKey: ["decks"],
+    queryFn: () => fetchDecks(),
   });
 
   const { data: cards = [], isLoading: cardsLoading } = useQuery({
@@ -46,28 +46,28 @@ function FlashcardsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const removeThemeServer = useServerFn(deleteTheme);
-  const removeTheme = useMutation({
-    mutationFn: (id: string) => removeThemeServer({ data: { id } }),
+  const removeDeckServer = useServerFn(deleteDeck);
+  const removeDeck = useMutation({
+    mutationFn: (id: string) => removeDeckServer({ data: { id } }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["themes"] });
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
-      toast.success("Tema excluído");
+      toast.success("Deck excluído");
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
-  const [editingThemeName, setEditingThemeName] = useState("");
+  const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
+  const [editingDeckName, setEditingDeckName] = useState("");
 
-  const updateThemeServer = useServerFn(updateTheme);
-  const updateThemeMutation = useMutation({
-    mutationFn: (vars: { id: string; name: string }) => updateThemeServer({ data: vars }),
+  const updateDeckServer = useServerFn(updateDeck);
+  const updateDeckMutation = useMutation({
+    mutationFn: (vars: { id: string; name: string }) => updateDeckServer({ data: vars }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["themes"] });
-      setEditingThemeId(null);
-      setEditingThemeName("");
-      toast.success("Tema atualizado");
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      setEditingDeckId(null);
+      setEditingDeckName("");
+      toast.success("Deck atualizado");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -85,21 +85,21 @@ function FlashcardsPage() {
   });
 
   // Build maps for tree
-  const themeById = Object.fromEntries(themes.map((t: any) => [t.id, t]));
+  const deckById = Object.fromEntries(decks.map((t: any) => [t.id, t]));
   const childrenMap: Record<string, any[]> = {};
-  for (const t of themes) {
+  for (const t of decks) {
     const pid = t.parent_id ?? "__root";
     childrenMap[pid] = childrenMap[pid] || [];
     childrenMap[pid].push(t);
   }
 
-  const getPath = (themeId: string) => {
+  const getPath = (deckId: string) => {
     const parts: string[] = [];
-    let cur: any = themeById[themeId];
+    let cur: any = deckById[deckId];
     while (cur) {
       parts.push(cur.name);
       if (!cur.parent_id) break;
-      cur = themeById[cur.parent_id];
+      cur = deckById[cur.parent_id];
     }
     return parts.reverse().join("::");
   };
@@ -107,50 +107,50 @@ function FlashcardsPage() {
   const [openIds, setOpenIds] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
 
-  function TreeNode({ theme, level = 0 }: { theme: any; level?: number }) {
-    const children = childrenMap[theme.id] ?? [];
-    const isOpen = !!openIds[theme.id];
-    const themeCards = cards.filter((c: any) => c.theme_id === theme.id);
+  function TreeNode({ deck, level = 0 }: { deck: any; level?: number }) {
+    const children = childrenMap[deck.id] ?? [];
+    const isOpen = !!openIds[deck.id];
+    const deckCards = cards.filter((c: any) => c.deck_id === deck.id);
 
     return (
-      <section key={theme.id} className="rounded-xl border border-border bg-card p-3">
+      <section key={deck.id} className="rounded-xl border border-border bg-card p-3">
         <div className="mb-2 flex items-center gap-3">
           {children.length > 0 ? (
-            <Button size="sm" variant="ghost" onClick={() => toggle(theme.id)}>
+            <Button size="sm" variant="ghost" onClick={() => toggle(deck.id)}>
               {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
             </Button>
           ) : (
             <div style={{ width: 36 }} />
           )}
 
-          {editingThemeId === theme.id ? (
+          {editingDeckId === deck.id ? (
             <div className="flex items-center gap-2 w-full">
-              <Input value={editingThemeName} onChange={(e) => setEditingThemeName(e.target.value)} />
+              <Input value={editingDeckName} onChange={(e) => setEditingDeckName(e.target.value)} />
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => updateThemeMutation.mutate({ id: theme.id, name: editingThemeName })}>
+                <Button size="sm" onClick={() => updateDeckMutation.mutate({ id: deck.id, name: editingDeckName })}>
                   Salvar
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => setEditingThemeId(null)}>
+                <Button size="sm" variant="ghost" onClick={() => setEditingDeckId(null)}>
                   Cancelar
                 </Button>
               </div>
             </div>
           ) : (
             <>
-              <h3 className="text-sm font-medium">{theme.name}</h3>
+              <h3 className="text-sm font-medium">{deck.name}</h3>
               <div className="ml-auto flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => {
-                  setEditingThemeId(theme.id);
-                  setEditingThemeName(theme.name);
+                  setEditingDeckId(deck.id);
+                  setEditingDeckName(deck.name);
                 }}>
                   Editar
                 </Button>
                 <Button size="sm" variant="destructive" onClick={() => {
-                  const count = themeCards.length;
-                  const ok = window.confirm(`Excluir tema "${theme.name}"? Isso também removerá ${count} card(s) deste tema.`);
-                  if (ok) removeTheme.mutate(theme.id);
+                  const count = deckCards.length;
+                  const ok = window.confirm(`Excluir deck "${deck.name}"? Isso também removerá ${count} card(s) deste deck.`);
+                  if (ok) removeDeck.mutate(deck.id);
                 }}>
-                  Excluir tema
+                  Excluir deck
                 </Button>
               </div>
             </>
@@ -159,11 +159,11 @@ function FlashcardsPage() {
 
         {/* If leaf, render cards */}
         {children.length === 0 ? (
-          themeCards.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum card neste tema.</p>
+          deckCards.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum card neste deck.</p>
           ) : (
             <ul className="space-y-3">
-              {themeCards.map((card: any) => (
+              {deckCards.map((card: any) => (
                 <li key={card.id} className="flex items-start justify-between gap-4">
                   {editingId === card.id ? (
                     <div className="flex-1">
@@ -183,7 +183,7 @@ function FlashcardsPage() {
                       <div>
                         <p className="font-medium">{card.pergunta}</p>
                         <p className="text-sm text-muted-foreground">{card.resposta}</p>
-                        <div className="mt-1 text-xs text-muted-foreground">{getPath(card.theme_id)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant="outline" onClick={() => {
@@ -208,7 +208,7 @@ function FlashcardsPage() {
           isOpen && (
             <div className="mt-3 space-y-3 pl-6">
               {children.map((child) => (
-                <TreeNode key={child.id} theme={child} level={level + 1} />
+                <TreeNode key={child.id} deck={child} level={level + 1} />
               ))}
             </div>
           )
@@ -228,17 +228,17 @@ function FlashcardsPage() {
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-5" />
             <h1 className="text-sm font-medium">Flashcards</h1>
-            <span className="ml-auto text-xs text-muted-foreground">Listagem por tema</span>
+            <span className="ml-auto text-xs text-muted-foreground">Listagem por deck</span>
           </header>
 
           <main className="flex flex-1 justify-center p-6">
             <div className="w-full max-w-3xl">
-              {themesLoading ? (
+              {decksLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : themes.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhum tema ainda.</p>
+              ) : decks.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhum deck ainda.</p>
               ) : cardsLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -246,7 +246,7 @@ function FlashcardsPage() {
               ) : (
                 <div className="space-y-4">
                   {roots.map((root) => (
-                    <TreeNode key={root.id} theme={root} />
+                    <TreeNode key={root.id} deck={root} />
                   ))}
                 </div>
               )}

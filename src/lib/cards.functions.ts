@@ -16,23 +16,23 @@ export const listCards = createServerFn({ method: "GET" })
 
 export const createCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { theme_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) => {
-    const themeId = input.theme_id?.trim();
+  .inputValidator((input: { deck_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) => {
+    const deckId = input.deck_id?.trim();
     const pergunta = input.pergunta?.trim();
     const resposta = input.resposta?.trim();
     const invert = !!input.invert;
     const cloze = !!input.cloze;
-    if (!themeId) throw new Error("Informe o tema do card.");
+    if (!deckId) throw new Error("Informe o deck do card.");
     if (!pergunta) throw new Error("Informe a pergunta do card.");
     if (!cloze && !resposta) throw new Error("Informe a resposta do card.");
-    return { theme_id: themeId, pergunta, resposta, invert, cloze };
+    return { deck_id: deckId, pergunta, resposta, invert, cloze };
   })
   .handler(async ({ data, context }) => {
     // primary card
     const inserts: any[] = [];
     inserts.push({
       user_id: context.userId,
-      theme_id: data.theme_id,
+      deck_id: data.deck_id,
       pergunta: data.pergunta,
       resposta: data.cloze ? data.pergunta : data.resposta,
       ...newCardFields(),
@@ -42,7 +42,7 @@ export const createCard = createServerFn({ method: "POST" })
     if (data.invert && !data.cloze) {
       inserts.push({
         user_id: context.userId,
-        theme_id: data.theme_id,
+        deck_id: data.deck_id,
         pergunta: data.resposta,
         resposta: data.pergunta,
         ...newCardFields(),
