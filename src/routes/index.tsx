@@ -390,9 +390,9 @@ function Index() {
                   })()}
                   <div className="text-xs text-muted-foreground">{(() => {
                     const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
-                    let done = 0; let overdue = 0; let pending = 0;
-                    for (const g of todayArr) { done += g.counts?.done ?? 0; overdue += g.counts?.overdue ?? 0; pending += g.counts?.pending ?? 0; }
-                    const total = done + overdue + pending;
+                    let done = 0; let pending = 0;
+                    for (const g of todayArr) { done += g.counts?.done ?? 0; pending += g.counts?.pending ?? 0; }
+                    const total = done + overdueCount + pending;
                     return `${done}/${total}`;
                   })()}</div>
                 </div>
