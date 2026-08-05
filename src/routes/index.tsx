@@ -346,13 +346,12 @@ function Index() {
                   {(() => {
                     const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                     let done = 0;
-                    let overdue = 0;
                     let pending = 0;
                     for (const g of todayArr) {
                       done += g.counts?.done ?? 0;
-                      overdue += g.counts?.overdue ?? 0;
                       pending += g.counts?.pending ?? 0;
                     }
+                    const overdue = overdueCount;
                     const total = done + overdue + pending;
                     const r = 36;
                     const circumference = 2 * Math.PI * r;
