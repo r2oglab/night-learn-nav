@@ -119,6 +119,10 @@ function FlashcardsPage() {
     const children = childrenMap[deck.id] ?? [];
     const isOpen = !!openIds[deck.id];
     const deckCards = cards.filter((c: any) => c.deck_id === deck.id);
+    const totalCardCount = collectDeckIds(deck.id).reduce(
+      (sum, id) => sum + cards.filter((c: any) => c.deck_id === id).length,
+      0,
+    );
 
     return (
       <section key={deck.id} className="rounded-xl border border-border bg-card p-3">
@@ -142,6 +146,7 @@ function FlashcardsPage() {
           ) : (
             <>
               <h3 className="text-sm font-medium">{deck.name}</h3>
+              <span className="text-xs text-muted-foreground">{totalCardCount} card(s)</span>
               <div className="ml-auto flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => {
                   setEditingDeckId(deck.id);

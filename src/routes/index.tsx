@@ -45,12 +45,6 @@ const statusStyles: Record<Status, string> = {
   pending: "bg-pending/25 text-pending-foreground border-pending/40",
 };
 
-const legend: { label: string; status: Status }[] = [
-  { label: "Concluída", status: "done" },
-  { label: "Atrasada", status: "overdue" },
-  { label: "Pendente", status: "pending" },
-];
-
 function Index() {
   // realNow must only ever be computed in the browser. Reading it at module
   // scope (or anywhere in the SSR render path) runs during the Cloudflare
