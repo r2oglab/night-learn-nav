@@ -51,12 +51,28 @@ const legend: { label: string; status: Status }[] = [
   { label: "Pendente", status: "pending" },
 ];
 
-// current real time (used for determining "today")
-const realNow = new Date();
-
 function Index() {
-  const [viewYear, setViewYear] = useState(realNow.getFullYear());
-  const [viewMonth, setViewMonth] = useState(realNow.getMonth());
+  // realNow must only ever be computed in the browser. Reading it at module
+  // scope (or anywhere in the SSR render path) runs during the Cloudflare
+  // Workers global/isolate scope, where real wall-clock time isn't
+  // available and Date resolves to the Unix epoch — that's what produced
+  // "janeiro de 1970" on the server while the client showed the real date,
+  // a hydration mismatch. Start null and fill it in after mount, same
+  // pattern as the PieChart's "mounted" gate below.
+  const [realNow, setRealNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setRealNow(new Date());
+  }, []);
+
+  const [viewYear, setViewYear] = useState<number | null>(null);
+  const [viewMonth, setViewMonth] = useState<number | null>(null);
+  useEffect(() => {
+    if (!realNow) return;
+    setViewYear(realNow.getFullYear());
+    setViewMonth(realNow.getMonth());
+  }, [realNow]);
+
+  const dateReady = realNow !== null && viewYear !== null && viewMonth !== null;
 
   // PieChart relies on an incrementing module-level id counter for clipPathId,
   // which drifts between SSR and the client. Only render it after mount.
@@ -65,11 +81,13 @@ function Index() {
     setMounted(true);
   }, []);
 
-  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleString("pt-BR", { month: "long", year: "numeric" });
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const firstWeekday = new Date(viewYear, viewMonth, 1).getDay();
-  const isViewingCurrentMonth = viewYear === realNow.getFullYear() && viewMonth === realNow.getMonth();
-  const today = isViewingCurrentMonth ? realNow.getDate() : null;
+  const monthLabel = dateReady
+    ? new Date(viewYear!, viewMonth!, 1).toLocaleString("pt-BR", { month: "long", year: "numeric" })
+    : "";
+  const daysInMonth = dateReady ? new Date(viewYear!, viewMonth! + 1, 0).getDate() : 0;
+  const firstWeekday = dateReady ? new Date(viewYear!, viewMonth!, 1).getDay() : 0;
+  const isViewingCurrentMonth = dateReady && viewYear === realNow!.getFullYear() && viewMonth === realNow!.getMonth();
+  const today = isViewingCurrentMonth ? realNow!.getDate() : null;
 
   const fetchDecks = useServerFn(listDecks);
   const { data: allDecks = [], isLoading: decksLoading } = useQuery({
@@ -81,10 +99,10 @@ function Index() {
 
   const { data: reviewsByDay = {}, isLoading } = useQuery({
     queryKey: ["cards", viewYear, viewMonth, /* depends on decks */ allDecks.length],
-    enabled: !decksLoading,
+    enabled: !decksLoading && dateReady,
     queryFn: async () => {
-      const start = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-01`;
-      const end = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${daysInMonth}`;
+      const start = `${viewYear}-${String(viewMonth! + 1).padStart(2, "0")}-01`;
+      const end = `${viewYear}-${String(viewMonth! + 1).padStart(2, "0")}-${daysInMonth}`;
 
       // Busca 1: por due (decide only between overdue and pending)
       const { data: dueData, error: dueError } = await supabase
@@ -110,7 +128,7 @@ function Index() {
         return Number(iso.slice(8, 10));
       }
 
-      const todayStart = new Date(realNow.getFullYear(), realNow.getMonth(), realNow.getDate());
+      const todayStart = new Date(realNow!.getFullYear(), realNow!.getMonth(), realNow!.getDate());
 
       type DayEntry = { id: string; deck: string; statuses: Status[]; labelDate?: string };
       // Build deck map to resolve root decks
@@ -171,14 +189,18 @@ function Index() {
   });
 
   // Heatmap: last 35 days up to today
-  const heatStart = new Date(realNow);
-  heatStart.setDate(realNow.getDate() - 34);
-  const heatStartISO = `${heatStart.getFullYear()}-${String(heatStart.getMonth() + 1).padStart(2, "0")}-${String(heatStart.getDate()).padStart(2, "0")}`;
-  const heatEndISO = `${realNow.getFullYear()}-${String(realNow.getMonth() + 1).padStart(2, "0")}-${String(realNow.getDate()).padStart(2, "0")}`;
+  const heatStart = dateReady ? new Date(realNow!) : null;
+  if (heatStart) heatStart.setDate(realNow!.getDate() - 34);
+  const heatStartISO = heatStart
+    ? `${heatStart.getFullYear()}-${String(heatStart.getMonth() + 1).padStart(2, "0")}-${String(heatStart.getDate()).padStart(2, "0")}`
+    : "";
+  const heatEndISO = dateReady
+    ? `${realNow!.getFullYear()}-${String(realNow!.getMonth() + 1).padStart(2, "0")}-${String(realNow!.getDate()).padStart(2, "0")}`
+    : "";
 
   const { data: heatmap = [], isLoading: heatLoading } = useQuery({
     queryKey: ["heatmap", heatStartISO, heatEndISO],
-    enabled: !decksLoading,
+    enabled: !decksLoading && dateReady,
     retry: 2,
     queryFn: async () => {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -195,7 +217,7 @@ function Index() {
 
       const dayMap: Record<string, { due: number; reviewed: number }> = {};
       for (let i = 0; i < 35; i++) {
-        const d = new Date(heatStart);
+        const d = new Date(heatStart!);
         d.setDate(d.getDate() + i);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         dayMap[key] = { due: 0, reviewed: 0 };
@@ -214,7 +236,7 @@ function Index() {
 
       const arr: number[] = [];
       for (let i = 0; i < 35; i++) {
-        const d = new Date(heatStart);
+        const d = new Date(heatStart!);
         d.setDate(d.getDate() + i);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         const stats = dayMap[key] ?? { due: 0, reviewed: 0 };
@@ -233,7 +255,7 @@ function Index() {
 
   // Mini calendar heatmap: same weekday-alignment technique as the main calendar,
   // padded with leading nulls so the grid lines up as real weeks (7 columns).
-  const heatFirstWeekday = heatStart.getDay();
+  const heatFirstWeekday = heatStart ? heatStart.getDay() : 0;
   const heatCells: ({ pct: number } | null)[] = [
     ...Array.from({ length: heatFirstWeekday }, () => null),
     ...heatmap.map((pct: number) => ({ pct })),
@@ -246,6 +268,7 @@ function Index() {
       <div className="flex min-h-screen w-full bg-background text-foreground">
         <AppSidebar />
 
+        {dateReady ? (
         <div className="flex flex-1 flex-col">
           <header className="flex h-14 items-center gap-3 border-b border-border px-4">
             <SidebarTrigger />
@@ -266,7 +289,7 @@ function Index() {
                     size="icon"
                     className="size-8"
                     onClick={() => {
-                      const d = new Date(viewYear, viewMonth - 1, 1);
+                      const d = new Date(viewYear!, viewMonth! - 1, 1);
                       setViewYear(d.getFullYear());
                       setViewMonth(d.getMonth());
                     }}
@@ -277,8 +300,8 @@ function Index() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setViewYear(realNow.getFullYear());
-                      setViewMonth(realNow.getMonth());
+                      setViewYear(realNow!.getFullYear());
+                      setViewMonth(realNow!.getMonth());
                     }}
                   >
                     Hoje
@@ -288,7 +311,7 @@ function Index() {
                     size="icon"
                     className="size-8"
                     onClick={() => {
-                      const d = new Date(viewYear, viewMonth + 1, 1);
+                      const d = new Date(viewYear!, viewMonth! + 1, 1);
                       setViewYear(d.getFullYear());
                       setViewMonth(d.getMonth());
                     }}
@@ -464,6 +487,11 @@ function Index() {
             </div>
           </main>
         </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
       </div>
     </SidebarProvider>
   );
