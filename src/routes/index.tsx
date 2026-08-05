@@ -179,6 +179,7 @@ function Index() {
   const { data: heatmap = [], isLoading: heatLoading } = useQuery({
     queryKey: ["heatmap", heatStartISO, heatEndISO],
     enabled: !decksLoading,
+    retry: 2,
     queryFn: async () => {
       const { data: dueData } = await supabase
         .from("cards")
