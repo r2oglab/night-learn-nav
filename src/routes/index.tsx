@@ -206,10 +206,7 @@ function Index() {
     enabled: !decksLoading && dateReady,
     retry: 2,
     queryFn: async () => {
-      console.log("[heatmap] chamando fetchHeatmapData com:", { heatStartISO, heatEndISO });
-      const resultado = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
-      console.log(JSON.stringify(resultado.debug));
-      const dueData = resultado.rows;
+      const dueData = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
 
       const dayMap: Record<string, { due: number; reviewed: number }> = {};
       for (let i = 0; i < 35; i++) {
