@@ -11,6 +11,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { listDecks } from "@/lib/decks.functions";
+import { getHeatmapData } from "@/lib/cards.functions";
 import { PieChart, Pie, Cell } from "recharts";
 
 export const Route = createFileRoute("/")({
@@ -94,6 +95,8 @@ function Index() {
     queryKey: ["decks"],
     queryFn: () => fetchDecks(),
   });
+
+  const fetchHeatmapData = useServerFn(getHeatmapData);
 
   const [showOthersDay, setShowOthersDay] = useState<number | null>(null);
 
@@ -203,17 +206,7 @@ function Index() {
     enabled: !decksLoading && dateReady,
     retry: 2,
     queryFn: async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      console.log("[heatmap] sessão no momento da busca:", sessionData?.session?.user?.id ?? "SEM SESSÃO");
-
-      const { data: dueData, error: heatError } = await supabase
-        .from("cards")
-        .select("id,due,last_review")
-        .gte("due", heatStartISO)
-        .lte("due", heatEndISO);
-
-      console.log("[heatmap] dueData (últimos 35 dias):", dueData);
-      console.log("[heatmap] error:", heatError);
+      const dueData = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
 
       const dayMap: Record<string, { due: number; reviewed: number }> = {};
       for (let i = 0; i < 35; i++) {
@@ -231,8 +224,6 @@ function Index() {
         const last = row.last_review?.slice(0, 10);
         if (last === due) dayMap[due].reviewed += 1;
       }
-
-      console.log("[heatmap] dayMap final:", dayMap);
 
       const arr: number[] = [];
       for (let i = 0; i < 35; i++) {

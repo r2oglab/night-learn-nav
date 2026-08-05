@@ -14,6 +14,25 @@ export const listCards = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+export const getHeatmapData = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { start: string; end: string }) => {
+    const start = input.start?.trim();
+    const end = input.end?.trim();
+    if (!start) throw new Error("Informe a data inicial.");
+    if (!end) throw new Error("Informe a data final.");
+    return { start, end };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await context.supabase
+      .from("cards")
+      .select("id,due,last_review")
+      .gte("due", data.start)
+      .lte("due", data.end);
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
 export const createCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { deck_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) => {
