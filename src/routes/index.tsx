@@ -12,7 +12,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { listDecks } from "@/lib/decks.functions";
 import { getHeatmapData } from "@/lib/cards.functions";
-import { PieChart, Pie, Cell } from "recharts";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -58,8 +57,7 @@ function Index() {
   // Workers global/isolate scope, where real wall-clock time isn't
   // available and Date resolves to the Unix epoch — that's what produced
   // "janeiro de 1970" on the server while the client showed the real date,
-  // a hydration mismatch. Start null and fill it in after mount, same
-  // pattern as the PieChart's "mounted" gate below.
+  // a hydration mismatch. Start null and fill it in after mount.
   const [realNow, setRealNow] = useState<Date | null>(null);
   useEffect(() => {
     setRealNow(new Date());
@@ -74,13 +72,6 @@ function Index() {
   }, [realNow]);
 
   const dateReady = realNow !== null && viewYear !== null && viewMonth !== null;
-
-  // PieChart relies on an incrementing module-level id counter for clipPathId,
-  // which drifts between SSR and the client. Only render it after mount.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const monthLabel = dateReady
     ? new Date(viewYear!, viewMonth!, 1).toLocaleString("pt-BR", { month: "long", year: "numeric" })
@@ -334,39 +325,52 @@ function Index() {
 
                 {/* Pie chart for today, fixed-width column */}
                 <div className="w-[120px] shrink-0">
-                  {mounted ? (
-                    <PieChart width={120} height={70}>
-                      {(() => {
-                        const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
-                        let done = 0;
-                        let overdue = 0;
-                        let pending = 0;
-                        for (const g of todayArr) {
-                          done += g.counts?.done ?? 0;
-                          overdue += g.counts?.overdue ?? 0;
-                          pending += g.counts?.pending ?? 0;
-                        }
-                        const total = done + overdue + pending;
-                        const data = [
-                          { name: "Revisados", value: done },
-                          { name: "Atrasados", value: overdue },
-                          { name: "Pendentes", value: pending },
-                        ];
-                        const COLORS = ["#10B981", "#F97316", "#F59E0B"];
-                        return (
-                          <>
-                            <Pie data={data} dataKey="value" innerRadius={12} outerRadius={24} paddingAngle={1}>
-                              {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                              ))}
-                            </Pie>
-                          </>
-                        );
-                      })()}
-                    </PieChart>
-                  ) : (
-                    <div className="w-[120px] h-[70px]" />
-                  )}
+                  {(() => {
+                    const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
+                    let done = 0;
+                    let overdue = 0;
+                    let pending = 0;
+                    for (const g of todayArr) {
+                      done += g.counts?.done ?? 0;
+                      overdue += g.counts?.overdue ?? 0;
+                      pending += g.counts?.pending ?? 0;
+                    }
+                    const total = done + overdue + pending;
+                    const r = 24;
+                    const circumference = 2 * Math.PI * r;
+                    const segments = [
+                      { value: done, color: "#10B981" },
+                      { value: overdue, color: "#F97316" },
+                      { value: pending, color: "#F59E0B" },
+                    ];
+                    let offset = 0;
+                    return (
+                      <svg width={70} height={70} viewBox="0 0 70 70">
+                        <circle cx={35} cy={35} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={10} />
+                        {total > 0 &&
+                          segments.map((seg, i) => {
+                            if (seg.value === 0) return null;
+                            const dash = (seg.value / total) * circumference;
+                            const el = (
+                              <circle
+                                key={i}
+                                cx={35}
+                                cy={35}
+                                r={r}
+                                fill="none"
+                                stroke={seg.color}
+                                strokeWidth={10}
+                                strokeDasharray={`${dash} ${circumference - dash}`}
+                                strokeDashoffset={-offset}
+                                transform="rotate(-90 35 35)"
+                              />
+                            );
+                            offset += dash;
+                            return el;
+                          })}
+                      </svg>
+                    );
+                  })()}
                   <div className="text-[11px] text-muted-foreground">{(() => {
                     const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                     let done = 0; let overdue = 0; let pending = 0;
