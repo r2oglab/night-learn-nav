@@ -14,7 +14,7 @@ export const listCards = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
-export const getHeatmapData = createServerFn({ method: "GET" })
+export const getHeatmapData = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { start: string; end: string }) => {
     const start = input.start?.trim();
