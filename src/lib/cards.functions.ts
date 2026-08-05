@@ -26,11 +26,21 @@ export const getHeatmapData = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { data: rows, error } = await context.supabase
       .from("cards")
-      .select("id,due,last_review")
-      .gte("due", data.start)
-      .lte("due", data.end);
+      .select("id,last_review")
+      .gte("last_review", data.start)
+      .lte("last_review", data.end);
     if (error) throw new Error(error.message);
-    return rows ?? [];
+
+    const { data: settings } = await context.supabase
+      .from("user_settings")
+      .select("daily_goal")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+
+    return {
+      rows: rows ?? [],
+      dailyGoal: settings?.daily_goal ?? 20,
+    };
   });
 
 export const createCard = createServerFn({ method: "POST" })

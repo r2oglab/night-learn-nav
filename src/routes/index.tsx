@@ -206,23 +206,21 @@ function Index() {
     enabled: !decksLoading && dateReady,
     retry: 2,
     queryFn: async () => {
-      const dueData = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
+      const { rows, dailyGoal } = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
 
-      const dayMap: Record<string, { due: number; reviewed: number }> = {};
+      const dayMap: Record<string, number> = {};
       for (let i = 0; i < 35; i++) {
         const d = new Date(heatStart!);
         d.setDate(d.getDate() + i);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        dayMap[key] = { due: 0, reviewed: 0 };
+        dayMap[key] = 0;
       }
 
-      for (const row of dueData ?? []) {
-        const due = row.due?.slice(0, 10);
-        if (!due) continue;
-        if (!dayMap[due]) continue;
-        dayMap[due].due += 1;
-        const last = row.last_review?.slice(0, 10);
-        if (last === due) dayMap[due].reviewed += 1;
+      for (const row of rows ?? []) {
+        const day = row.last_review?.slice(0, 10);
+        if (!day) continue;
+        if (dayMap[day] === undefined) continue;
+        dayMap[day] += 1;
       }
 
       const arr: number[] = [];
@@ -230,8 +228,8 @@ function Index() {
         const d = new Date(heatStart!);
         d.setDate(d.getDate() + i);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        const stats = dayMap[key] ?? { due: 0, reviewed: 0 };
-        const pct = stats.due === 0 ? 0 : Math.round((stats.reviewed / stats.due) * 100);
+        const count = dayMap[key] ?? 0;
+        const pct = dailyGoal > 0 ? Math.min(100, Math.round((count / dailyGoal) * 100)) : 0;
         arr.push(pct);
       }
       return arr;
