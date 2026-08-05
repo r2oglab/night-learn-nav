@@ -123,13 +123,9 @@ function FlashcardsPage() {
     return (
       <section key={deck.id} className="rounded-xl border border-border bg-card p-3">
         <div className="mb-2 flex items-center gap-3">
-          {children.length > 0 ? (
-            <Button size="sm" variant="ghost" onClick={() => toggle(deck.id)}>
-              {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-            </Button>
-          ) : (
-            <div style={{ width: 36 }} />
-          )}
+          <Button size="sm" variant="ghost" onClick={() => toggle(deck.id)}>
+            {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          </Button>
 
           {editingDeckId === deck.id ? (
             <div className="flex items-center gap-2 w-full">
@@ -166,8 +162,8 @@ function FlashcardsPage() {
           )}
         </div>
 
-        {/* Render this deck's own cards when it's a leaf, or when expanded alongside its subdecks */}
-        {(children.length === 0 || isOpen) && (
+        {/* Render this deck's own cards only when expanded */}
+        {isOpen && (
           deckCards.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum card neste deck.</p>
           ) : (
