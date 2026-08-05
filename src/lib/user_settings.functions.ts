@@ -40,7 +40,7 @@ export const upsertUserSettings = createServerFn({ method: "POST" })
 
     const { data: row, error } = await context.supabase
       .from("user_settings")
-      .upsert(payload, { onConflict: ["user_id"] })
+      .upsert(payload, { onConflict: "user_id" })
       .select("*")
       .single();
     if (error) throw new Error(error.message);

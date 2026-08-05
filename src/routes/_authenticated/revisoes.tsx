@@ -147,7 +147,7 @@ function RevisoesPage() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  if (reviewCount === 0) return toast.info("Nenhum card para revisar hoje.");
+                  if (reviewCount === 0) { toast.info("Nenhum card para revisar hoje."); return; }
                   setShowSession(true);
                 }}
               >
@@ -196,7 +196,7 @@ function RevisoesPage() {
                 onSubmit={async (event) => {
                   event.preventDefault();
                   const deck = deckPath.trim();
-                  if (!deck) return toast.error("Informe o caminho do deck (ex: Deck::Subdeck)");
+                  if (!deck) { toast.error("Informe o caminho do deck (ex: Deck::Subdeck)"); return; }
                   if (!question.trim() || !answer.trim()) return;
 
                   try {

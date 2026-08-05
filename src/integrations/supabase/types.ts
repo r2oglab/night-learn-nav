@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      cards: {
+        Row: {
+          created_at: string
+          difficulty: number
+          due: string
+          elapsed_days: number
+          id: string
+          lapses: number
+          last_review: string | null
+          pergunta: string
+          reps: number
+          resposta: string
+          scheduled_days: number
+          stability: number
+          state: number
+          theme_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          difficulty?: number
+          due?: string
+          elapsed_days?: number
+          id?: string
+          lapses?: number
+          last_review?: string | null
+          pergunta: string
+          reps?: number
+          resposta: string
+          scheduled_days?: number
+          stability?: number
+          state?: number
+          theme_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          difficulty?: number
+          due?: string
+          elapsed_days?: number
+          id?: string
+          lapses?: number
+          last_review?: string | null
+          pergunta?: string
+          reps?: number
+          resposta?: string
+          scheduled_days?: number
+          stability?: number
+          state?: number
+          theme_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cards_theme_id_fkey"
+            columns: ["theme_id"]
+            isOneToOne: false
+            referencedRelation: "themes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       revisions: {
         Row: {
           created_at: string
@@ -21,7 +86,6 @@ export type Database = {
           rating: number | null
           scheduled_date: string
           status: string
-          theme: string
           theme_id: string | null
         }
         Insert: {
@@ -30,7 +94,6 @@ export type Database = {
           rating?: number | null
           scheduled_date: string
           status?: string
-          theme: string
           theme_id?: string | null
         }
         Update: {
@@ -39,7 +102,6 @@ export type Database = {
           rating?: number | null
           scheduled_date?: string
           status?: string
-          theme?: string
           theme_id?: string | null
         }
         Relationships: [
@@ -55,50 +117,58 @@ export type Database = {
       themes: {
         Row: {
           created_at: string
-          difficulty: number
-          due: string
-          elapsed_days: number
           id: string
-          lapses: number
-          last_review: string | null
           name: string
-          reps: number
-          scheduled_days: number
-          stability: number
-          state: number
-          updated_at: string
+          parent_id: string | null
           user_id: string
         }
         Insert: {
           created_at?: string
-          difficulty?: number
-          due?: string
-          elapsed_days?: number
           id?: string
-          lapses?: number
-          last_review?: string | null
           name: string
-          reps?: number
-          scheduled_days?: number
-          stability?: number
-          state?: number
-          updated_at?: string
+          parent_id?: string | null
           user_id: string
         }
         Update: {
           created_at?: string
-          difficulty?: number
-          due?: string
-          elapsed_days?: number
           id?: string
-          lapses?: number
-          last_review?: string | null
           name?: string
-          reps?: number
-          scheduled_days?: number
-          stability?: number
-          state?: number
-          updated_at?: string
+          parent_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "themes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "themes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_settings: {
+        Row: {
+          created_at: string
+          daily_goal: number
+          desired_retention: number
+          last_review_date: string | null
+          streak: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_goal?: number
+          desired_retention?: number
+          last_review_date?: string | null
+          streak?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_goal?: number
+          desired_retention?: number
+          last_review_date?: string | null
+          streak?: number
           user_id?: string
         }
         Relationships: []

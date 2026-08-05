@@ -61,7 +61,7 @@ function CriacaoPage() {
                 onSubmit={async (event) => {
                   event.preventDefault();
                   const deck = deckPath.trim();
-                  if (!deck) return toast.error("Informe o caminho do deck (ex: Deck::Subdeck)");
+                  if (!deck) { toast.error("Informe o caminho do deck (ex: Deck::Subdeck)"); return; }
                   if (!question.trim() || (!cloze && !answer.trim())) return;
 
                   try {

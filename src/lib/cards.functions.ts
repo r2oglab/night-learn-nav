@@ -115,7 +115,7 @@ export const reviewCard = createServerFn({ method: "POST" })
 
       await context.supabase
         .from("user_settings")
-        .upsert({ user_id: context.userId, last_review_date: todayStr, streak: newStreak }, { onConflict: ["user_id"] });
+        .upsert({ user_id: context.userId, last_review_date: todayStr, streak: newStreak }, { onConflict: "user_id" });
     } catch (e) {
       // non-fatal
       console.warn("Failed to update user_settings streak", e);
@@ -124,7 +124,7 @@ export const reviewCard = createServerFn({ method: "POST" })
     return updated;
   });
 
-export const deleteCard = createServerFn({ method: "DELETE" })
+export const deleteCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string }) => {
     if (!input.id?.trim()) throw new Error("ID do card inválido.");

@@ -32,8 +32,8 @@ export function ReviewSession({
   const current = cards[index];
   const clozeMatch = current?.pergunta?.match(/\{\{c::(.*?)\}\}/);
   const isCloze = !!clozeMatch;
-  const maskedQuestion = isCloze ? current.pergunta.replace(/\{\{c::(.*?)\}\}/g, '___') : current.pergunta;
-  const clozeFull = isCloze ? current.pergunta.replace(/\{\{c::(.*?)\}\}/g, (_, g) => g) : null;
+  const maskedQuestion = isCloze ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, '___') : (current?.pergunta ?? '');
+  const clozeFull = isCloze ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, (_, g) => g) : null;
 
   async function handleRating(rating: number) {
     if (!current) return;
@@ -104,7 +104,7 @@ export function ReviewSession({
             {revealed && (
               <div className="mt-6">
                 <div className="mb-2 text-sm text-muted-foreground">Resposta</div>
-                <div className="text-base">{isCloze ? (clozeFull ?? current.resposta) : current.resposta}</div>
+                <div className="text-base">{isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}</div>
               </div>
             )}
           </div>

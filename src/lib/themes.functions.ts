@@ -43,7 +43,7 @@ export const createTheme = createServerFn({ method: "POST" })
         .order("created_at", { ascending: true })
         .limit(1);
 
-      const selectQuery =
+      const selectQuery: any =
         parentId === null
           ? query.is("parent_id", null)
           : query.eq("parent_id", parentId);
@@ -81,7 +81,7 @@ export const deleteTheme = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const updateTheme = createServerFn({ method: "PATCH" })
+export const updateTheme = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string; name: string }) => {
     const id = input.id?.trim();
