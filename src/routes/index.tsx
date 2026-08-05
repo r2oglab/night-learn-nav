@@ -323,8 +323,8 @@ function Index() {
                   </div>
                 </div>
 
-                {/* Pie chart for today, fixed-width column */}
-                <div className="w-[120px] shrink-0">
+                {/* Pie chart for today, in a card matching the main calendar's style */}
+                <div className="flex w-[160px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card p-3">
                   {(() => {
                     const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                     let done = 0;
@@ -336,7 +336,7 @@ function Index() {
                       pending += g.counts?.pending ?? 0;
                     }
                     const total = done + overdue + pending;
-                    const r = 24;
+                    const r = 36;
                     const circumference = 2 * Math.PI * r;
                     const segments = [
                       { value: done, color: "#10B981" },
@@ -345,8 +345,8 @@ function Index() {
                     ];
                     let offset = 0;
                     return (
-                      <svg width={70} height={70} viewBox="0 0 70 70">
-                        <circle cx={35} cy={35} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={10} />
+                      <svg width={100} height={100} viewBox="0 0 100 100">
+                        <circle cx={50} cy={50} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={14} />
                         {total > 0 &&
                           segments.map((seg, i) => {
                             if (seg.value === 0) return null;
@@ -354,15 +354,15 @@ function Index() {
                             const el = (
                               <circle
                                 key={i}
-                                cx={35}
-                                cy={35}
+                                cx={50}
+                                cy={50}
                                 r={r}
                                 fill="none"
                                 stroke={seg.color}
-                                strokeWidth={10}
+                                strokeWidth={14}
                                 strokeDasharray={`${dash} ${circumference - dash}`}
                                 strokeDashoffset={-offset}
-                                transform="rotate(-90 35 35)"
+                                transform="rotate(-90 50 50)"
                               />
                             );
                             offset += dash;
@@ -371,7 +371,7 @@ function Index() {
                       </svg>
                     );
                   })()}
-                  <div className="text-[11px] text-muted-foreground">{(() => {
+                  <div className="text-xs text-muted-foreground">{(() => {
                     const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                     let done = 0; let overdue = 0; let pending = 0;
                     for (const g of todayArr) { done += g.counts?.done ?? 0; overdue += g.counts?.overdue ?? 0; pending += g.counts?.pending ?? 0; }
