@@ -36,16 +36,19 @@ export const getHeatmapData = createServerFn({ method: "POST" })
       .select("id,due,last_review")
       .limit(10);
 
+    const debug = {
+      receivedStart: data.start,
+      receivedEnd: data.end,
+      userId: context.userId,
+      rowCount: (rows ?? []).length,
+      unfilteredCount: (allRows ?? []).length,
+      unfilteredSample: (allRows ?? []).slice(0, 3),
+    };
+    console.log(JSON.stringify(debug));
+
     return {
       rows: rows ?? [],
-      debug: {
-        receivedStart: data.start,
-        receivedEnd: data.end,
-        userId: context.userId,
-        rowCount: (rows ?? []).length,
-        unfilteredCount: (allRows ?? []).length,
-        unfilteredSample: (allRows ?? []).slice(0, 3),
-      },
+      debug,
     };
   });
 

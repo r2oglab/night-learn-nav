@@ -208,7 +208,7 @@ function Index() {
     queryFn: async () => {
       console.log("[heatmap] chamando fetchHeatmapData com:", { heatStartISO, heatEndISO });
       const resultado = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
-      console.log("[heatmap] resposta completa do servidor:", resultado);
+      console.log(JSON.stringify(resultado.debug));
       const dueData = resultado.rows;
 
       const dayMap: Record<string, { due: number; reviewed: number }> = {};
