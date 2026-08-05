@@ -4,9 +4,7 @@ BEGIN;
 ALTER TABLE public.cards DROP CONSTRAINT IF EXISTS cards_theme_id_fkey;
 ALTER TABLE public.revisions DROP CONSTRAINT IF EXISTS revisions_theme_id_fkey;
 
-ALTER TABLE public.themes RENAME TO public.decks;
-
-ALTER TABLE public.decks RENAME COLUMN theme_id TO deck_id;
+ALTER TABLE public.themes RENAME TO decks;
 
 ALTER TABLE public.cards RENAME COLUMN theme_id TO deck_id;
 ALTER TABLE public.cards
