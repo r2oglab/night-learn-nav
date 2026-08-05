@@ -5,6 +5,7 @@ import {
   Layers,
   Settings,
   BrainCircuit,
+  Plus,
   LogIn,
   LogOut,
 } from "lucide-react";
