@@ -119,18 +119,56 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          parent_id: string | null
           user_id: string
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
+          parent_id?: string | null
           user_id: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
+          parent_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "themes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "themes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_settings: {
+        Row: {
+          created_at: string
+          daily_goal: number
+          desired_retention: number
+          last_review_date: string | null
+          streak: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_goal?: number
+          desired_retention?: number
+          last_review_date?: string | null
+          streak?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_goal?: number
+          desired_retention?: number
+          last_review_date?: string | null
+          streak?: number
           user_id?: string
         }
         Relationships: []
