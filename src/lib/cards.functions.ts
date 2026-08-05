@@ -24,11 +24,19 @@ export const getHeatmapData = createServerFn({ method: "POST" })
     return { start, end };
   })
   .handler(async ({ data, context }) => {
+    // last_review is a timestamptz; comparing it with a plain date string like
+    // "2026-08-05" via .lte() means "<= 2026-08-05 00:00:00", which excludes
+    // every review made later that same day. Use an exclusive upper bound of
+    // the day AFTER "end" instead, so the whole final day is included.
+    const endExclusive = new Date(`${data.end}T00:00:00Z`);
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+    const endExclusiveISO = endExclusive.toISOString().slice(0, 10);
+
     const { data: rows, error } = await context.supabase
       .from("cards")
       .select("id,last_review")
       .gte("last_review", data.start)
-      .lte("last_review", data.end);
+      .lt("last_review", endExclusiveISO);
     if (error) throw new Error(error.message);
 
     const { data: settings } = await context.supabase
