@@ -215,6 +215,15 @@ function Index() {
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
+  // Mini calendar heatmap: same weekday-alignment technique as the main calendar,
+  // padded with leading nulls so the grid lines up as real weeks (7 columns).
+  const heatFirstWeekday = heatStart.getDay();
+  const heatCells: ({ pct: number } | null)[] = [
+    ...Array.from({ length: heatFirstWeekday }, () => null),
+    ...heatmap.map((pct: number) => ({ pct })),
+  ];
+  while (heatCells.length % 7 !== 0) heatCells.push(null);
+
 
   return (
     <SidebarProvider>
@@ -273,20 +282,30 @@ function Index() {
                 </div>
               </div>
 
-              <div className="mb-4 flex items-start gap-4">
-                {/* Heatmap 35 days */}
-                <div className="flex shrink-0 gap-1">
-                  {heatmap.map((pct: number, idx: number) => {
-                    const bucket = pct >= 100 ? 4 : pct >= 75 ? 3 : pct >= 50 ? 2 : pct >= 25 ? 1 : 0;
-                    const colors = ["bg-muted/30", "bg-red-200", "bg-amber-300", "bg-yellow-400", "bg-emerald-400"];
-                    return (
-                      <div key={idx} title={`${pct}%`} className={`h-3 w-5 rounded ${colors[bucket]}`} />
-                    );
-                  })}
+              <div className="mb-4 grid grid-cols-[auto_120px] items-start gap-4 overflow-x-auto">
+                {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
+                <div className="inline-flex flex-col gap-1">
+                  <div className="grid grid-cols-7 gap-1">
+                    {weekDays.map((d) => (
+                      <div key={d} className="size-4 text-center text-[9px] font-medium uppercase leading-4 text-muted-foreground">
+                        {d[0]}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {heatCells.map((cell, idx) => {
+                      if (!cell) return <div key={idx} className="size-4" />;
+                      const bucket = cell.pct >= 100 ? 4 : cell.pct >= 75 ? 3 : cell.pct >= 50 ? 2 : cell.pct >= 25 ? 1 : 0;
+                      const colors = ["bg-muted/30", "bg-red-200", "bg-amber-300", "bg-yellow-400", "bg-emerald-400"];
+                      return (
+                        <div key={idx} title={`${cell.pct}%`} className={`size-4 rounded ${colors[bucket]}`} />
+                      );
+                    })}
+                  </div>
                 </div>
 
-                {/* Pie chart for today */}
-                <div className="w-40 h-16 shrink-0">
+                {/* Pie chart for today, fixed-width column */}
+                <div className="w-[120px] shrink-0">
                   <ResponsiveContainer width="100%" height={60}>
                     <PieChart>
                       {(() => {
@@ -326,7 +345,6 @@ function Index() {
                     return `${done}/${total}`;
                   })()}</div>
                 </div>
-
               </div>
 
               <div className="overflow-hidden rounded-xl border border-border bg-card">
