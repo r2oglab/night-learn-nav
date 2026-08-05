@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 
@@ -11,7 +11,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { listDecks } from "@/lib/decks.functions";
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { PieChart, Pie, Cell } from "recharts";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -57,6 +57,13 @@ const realNow = new Date();
 function Index() {
   const [viewYear, setViewYear] = useState(realNow.getFullYear());
   const [viewMonth, setViewMonth] = useState(realNow.getMonth());
+
+  // PieChart relies on an incrementing module-level id counter for clipPathId,
+  // which drifts between SSR and the client. Only render it after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleString("pt-BR", { month: "long", year: "numeric" });
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
@@ -179,6 +186,8 @@ function Index() {
         .gte("due", heatStartISO)
         .lte("due", heatEndISO);
 
+      console.log("[heatmap] dueData (últimos 35 dias):", dueData);
+
       const dayMap: Record<string, { due: number; reviewed: number }> = {};
       for (let i = 0; i < 35; i++) {
         const d = new Date(heatStart);
@@ -195,6 +204,8 @@ function Index() {
         const last = row.last_review?.slice(0, 10);
         if (last === due) dayMap[due].reviewed += 1;
       }
+
+      console.log("[heatmap] dayMap final:", dayMap);
 
       const arr: number[] = [];
       for (let i = 0; i < 35; i++) {
@@ -306,8 +317,8 @@ function Index() {
 
                 {/* Pie chart for today, fixed-width column */}
                 <div className="w-[120px] shrink-0">
-                  <ResponsiveContainer width="100%" height={60}>
-                    <PieChart>
+                  {mounted ? (
+                    <PieChart width={120} height={70}>
                       {(() => {
                         const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                         let done = 0;
@@ -336,7 +347,9 @@ function Index() {
                         );
                       })()}
                     </PieChart>
-                  </ResponsiveContainer>
+                  ) : (
+                    <div className="w-[120px] h-[70px]" />
+                  )}
                   <div className="text-[11px] text-muted-foreground">{(() => {
                     const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                     let done = 0; let overdue = 0; let pending = 0;
