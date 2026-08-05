@@ -107,6 +107,14 @@ function FlashcardsPage() {
   const [openIds, setOpenIds] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
 
+  const collectDeckIds = (deckId: string): string[] => {
+    const ids = [deckId];
+    for (const child of childrenMap[deckId] ?? []) {
+      ids.push(...collectDeckIds(child.id));
+    }
+    return ids;
+  };
+
   function TreeNode({ deck, level = 0 }: { deck: any; level?: number }) {
     const children = childrenMap[deck.id] ?? [];
     const isOpen = !!openIds[deck.id];
@@ -146,7 +154,8 @@ function FlashcardsPage() {
                   Editar
                 </Button>
                 <Button size="sm" variant="destructive" onClick={() => {
-                  const count = deckCards.length;
+                  const deckIds = new Set(collectDeckIds(deck.id));
+                  const count = cards.filter((c: any) => deckIds.has(c.deck_id)).length;
                   const ok = window.confirm(`Excluir deck "${deck.name}"? Isso também removerá ${count} card(s) deste deck.`);
                   if (ok) removeDeck.mutate(deck.id);
                 }}>
