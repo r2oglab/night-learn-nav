@@ -29,7 +29,7 @@ export type Database = {
           scheduled_days: number
           stability: number
           state: number
-          theme_id: string
+          deck_id: string
           updated_at: string
           user_id: string
         }
@@ -47,7 +47,7 @@ export type Database = {
           scheduled_days?: number
           stability?: number
           state?: number
-          theme_id: string
+          deck_id: string
           updated_at?: string
           user_id: string
         }
@@ -65,16 +65,16 @@ export type Database = {
           scheduled_days?: number
           stability?: number
           state?: number
-          theme_id?: string
+          deck_id?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "cards_theme_id_fkey"
-            columns: ["theme_id"]
+            foreignKeyName: "cards_deck_id_fkey"
+            columns: ["deck_id"]
             isOneToOne: false
-            referencedRelation: "themes"
+            referencedRelation: "decks"
             referencedColumns: ["id"]
           },
         ]
@@ -86,11 +86,7 @@ export type Database = {
           rating: number | null
           scheduled_date: string
           status: string
-<<<<<<< HEAD
-          theme_id: string | null
-=======
           deck_id: string | null
->>>>>>> 1f53da8 (decks 1.2)
         }
         Insert: {
           created_at?: string
@@ -98,11 +94,7 @@ export type Database = {
           rating?: number | null
           scheduled_date: string
           status?: string
-<<<<<<< HEAD
-          theme_id?: string | null
-=======
           deck_id?: string | null
->>>>>>> 1f53da8 (decks 1.2)
         }
         Update: {
           created_at?: string
@@ -110,11 +102,7 @@ export type Database = {
           rating?: number | null
           scheduled_date?: string
           status?: string
-<<<<<<< HEAD
-          theme_id?: string | null
-=======
           deck_id?: string | null
->>>>>>> 1f53da8 (decks 1.2)
         }
         Relationships: [
           {
@@ -146,15 +134,14 @@ export type Database = {
           id?: string
           name?: string
           parent_id?: string | null
-<<<<<<< HEAD
           user_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "themes_parent_id_fkey"
+            foreignKeyName: "decks_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
-            referencedRelation: "themes"
+            referencedRelation: "decks"
             referencedColumns: ["id"]
           },
         ]
@@ -182,8 +169,6 @@ export type Database = {
           desired_retention?: number
           last_review_date?: string | null
           streak?: number
-=======
->>>>>>> 1f53da8 (decks 1.2)
           user_id?: string
         }
         Relationships: []

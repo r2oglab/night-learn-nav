@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { buildDeckTree, type DeckRow } from "./deck-tree";
 
 export const listDecks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -10,7 +11,20 @@ export const listDecks = createServerFn({ method: "GET" })
         .select("id,user_id,name,parent_id,created_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return (data ?? []) as DeckRow[];
+  });
+
+export const listDeckTree = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase
+      .from("decks")
+      .select("id,user_id,name,parent_id,created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as DeckRow[];
+    return buildDeckTree(rows);
   });
 
 export const createDeck = createServerFn({ method: "POST" })
@@ -32,7 +46,7 @@ export const createDeck = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     let parentId: string | null = null;
-    let currentDeck: any = null;
+    let currentDeck: DeckRow | null = null;
 
     for (const segment of data.segments) {
       const query = context.supabase
@@ -51,7 +65,7 @@ export const createDeck = createServerFn({ method: "POST" })
       const { data: existingRows, error: selectError } = await selectQuery;
       if (selectError) throw selectError;
 
-      const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+      const existing = Array.isArray(existingRows) ? (existingRows[0] as DeckRow) : null;
       if (existing) {
         currentDeck = existing;
         parentId = existing.id;
@@ -65,8 +79,8 @@ export const createDeck = createServerFn({ method: "POST" })
         .single();
       if (insertError) throw insertError;
 
-      currentDeck = inserted;
-      parentId = inserted.id;
+      currentDeck = inserted as DeckRow;
+      parentId = currentDeck.id;
     }
 
     return currentDeck;
@@ -81,11 +95,7 @@ export const deleteDeck = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-<<<<<<< HEAD:src/lib/themes.functions.ts
-export const updateTheme = createServerFn({ method: "POST" })
-=======
 export const updateDeck = createServerFn({ method: "PATCH" })
->>>>>>> 1f53da8 (decks 1.2):src/lib/decks.functions.ts
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string; name: string }) => {
     const id = input.id?.trim();

@@ -10,12 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { getUserSettings, upsertUserSettings } from "@/lib/user_settings.functions";
 import { listCards } from "@/lib/cards.functions";
-<<<<<<< HEAD
-import { listThemes } from "@/lib/themes.functions";
-=======
 import { listDecks } from "@/lib/decks.functions";
-import { saveAs } from "file-saver";
->>>>>>> 1f53da8 (decks 1.2)
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/configuracoes")({
@@ -41,14 +36,8 @@ function Configuracoes() {
       const cards = await fetchCards();
       const userCards = cards.filter((c: any) => c.user_id === user?.id);
       const deckById = Object.fromEntries((decks || []).map((t: any) => [t.id, t]));
-
-<<<<<<< HEAD
-      const rows: Record<string, any>[] = userCards.map((c: any) => ({
-        tema: themeById[c.theme_id]?.name ?? c.theme_id,
-=======
       const rows = userCards.map((c: any) => ({
         deck: deckById[c.deck_id]?.name ?? c.deck_id,
->>>>>>> 1f53da8 (decks 1.2)
         pergunta: c.pergunta,
         resposta: c.resposta,
         due: c.due,
