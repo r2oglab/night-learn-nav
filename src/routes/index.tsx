@@ -324,7 +324,7 @@ function Index() {
                     {heatCells.map((cell, idx) => {
                       if (!cell) return <div key={idx} className="size-4" />;
                       const bucket = cell.pct >= 100 ? 4 : cell.pct >= 75 ? 3 : cell.pct >= 50 ? 2 : cell.pct >= 25 ? 1 : 0;
-                      const colors = ["bg-muted/30", "bg-red-200", "bg-amber-300", "bg-yellow-400", "bg-emerald-400"];
+                      const colors = ["bg-muted/30", "bg-emerald-100", "bg-emerald-300", "bg-emerald-500", "bg-emerald-700"];
                       return (
                         <div key={idx} title={`${cell.pct}%`} className={`size-4 rounded ${colors[bucket]}`} />
                       );
