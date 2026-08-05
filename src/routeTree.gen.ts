@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
+import { Route as AuthenticatedCriacaoRouteImport } from './routes/_authenticated/criacao'
 import { Route as AuthenticatedFlashcardsRouteImport } from './routes/_authenticated/flashcards'
 import { Route as AuthenticatedRevisoesRouteImport } from './routes/_authenticated/revisoes'
 
@@ -35,6 +36,11 @@ const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
   path: '/configuracoes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedCriacaoRoute = AuthenticatedCriacaoRouteImport.update({
+  id: '/criacao',
+  path: '/criacao',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedFlashcardsRoute = AuthenticatedFlashcardsRouteImport.update({
   id: '/flashcards',
   path: '/flashcards',
@@ -50,6 +56,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/criacao': typeof AuthenticatedCriacaoRoute
   '/flashcards': typeof AuthenticatedFlashcardsRoute
   '/revisoes': typeof AuthenticatedRevisoesRoute
 }
@@ -57,6 +64,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/criacao': typeof AuthenticatedCriacaoRoute
   '/flashcards': typeof AuthenticatedFlashcardsRoute
   '/revisoes': typeof AuthenticatedRevisoesRoute
 }
@@ -66,20 +74,24 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/configuracoes': typeof ConfiguracoesRoute
+  '/_authenticated/criacao': typeof AuthenticatedCriacaoRoute
   '/_authenticated/flashcards': typeof AuthenticatedFlashcardsRoute
   '/_authenticated/revisoes': typeof AuthenticatedRevisoesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/configuracoes' | '/flashcards' | '/revisoes'
+  fullPaths:
+    '/' | '/auth' | '/configuracoes' | '/criacao' | '/flashcards' | '/revisoes'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/configuracoes' | '/flashcards' | '/revisoes'
+  to:
+    '/' | '/auth' | '/configuracoes' | '/criacao' | '/flashcards' | '/revisoes'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
     | '/configuracoes'
+    | '/_authenticated/criacao'
     | '/_authenticated/flashcards'
     | '/_authenticated/revisoes'
   fileRoutesById: FileRoutesById
@@ -121,6 +133,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConfiguracoesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/criacao': {
+      id: '/_authenticated/criacao'
+      path: '/criacao'
+      fullPath: '/criacao'
+      preLoaderRoute: typeof AuthenticatedCriacaoRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/flashcards': {
       id: '/_authenticated/flashcards'
       path: '/flashcards'
@@ -139,11 +158,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedCriacaoRoute: typeof AuthenticatedCriacaoRoute
   AuthenticatedFlashcardsRoute: typeof AuthenticatedFlashcardsRoute
   AuthenticatedRevisoesRoute: typeof AuthenticatedRevisoesRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedCriacaoRoute: AuthenticatedCriacaoRoute,
   AuthenticatedFlashcardsRoute: AuthenticatedFlashcardsRoute,
   AuthenticatedRevisoesRoute: AuthenticatedRevisoesRoute,
 }

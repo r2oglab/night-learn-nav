@@ -73,8 +73,11 @@ export function newCardFields(): CardFields {
   return cardToFields(createEmptyCard());
 }
 
-export function reviewCard(row: CardRow, rating: number, now = new Date()): CardFields {
-  const result = scheduler.next(rowToCard(row), now, rating as Grade);
+export function reviewCard(row: CardRow, rating: number, now = new Date(), request_retention?: number): CardFields {
+  const params: any = { enable_fuzz: true };
+  if (typeof request_retention === "number") params.request_retention = request_retention;
+  const localScheduler = fsrs(generatorParameters(params));
+  const result = localScheduler.next(rowToCard(row), now, rating as Grade);
   return cardToFields(result.card);
 }
 

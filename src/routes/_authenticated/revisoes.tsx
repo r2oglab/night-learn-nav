@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { CalendarClock, Loader2, Plus } from "lucide-react";
+import { CalendarClock, Loader2, Plus, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -14,6 +14,7 @@ import { ratingOptions, stateLabels } from "@/lib/fsrs";
 import { createCard, listCards, reviewCard } from "@/lib/cards.functions";
 import { createTheme, listThemes } from "@/lib/themes.functions";
 import { cn } from "@/lib/utils";
+import ReviewSession from "@/components/review-session";
 
 export const Route = createFileRoute("/_authenticated/revisoes")({
   head: () => ({
@@ -60,6 +61,7 @@ function RevisoesPage() {
   const [themeId, setThemeId] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [deckPath, setDeckPath] = useState("");
 
   const { data: themes = [], isLoading: themesLoading } = useQuery({
     queryKey: ["themes"],
@@ -84,6 +86,7 @@ function RevisoesPage() {
   });
 
   const reviewCount = cardsToReview.length;
+  const [showSession, setShowSession] = useState(false);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["cards"] });
@@ -140,6 +143,18 @@ function RevisoesPage() {
             <span className="ml-auto text-xs text-muted-foreground">
               Cards individuais com FSRS
             </span>
+            <div className="ml-3">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (reviewCount === 0) return toast.info("Nenhum card para revisar hoje.");
+                  setShowSession(true);
+                }}
+              >
+                <Play className="size-4" />
+                <span className="ml-2">Começar</span>
+              </Button>
+            </div>
           </header>
 
           <main className="flex flex-1 justify-center p-6">
@@ -178,28 +193,29 @@ function RevisoesPage() {
 
               <form
                 className="mb-6 grid gap-3"
-                onSubmit={(event) => {
+                onSubmit={async (event) => {
                   event.preventDefault();
-                  if (question.trim() && answer.trim() && themeId) {
-                    create.mutate({ theme_id: themeId, pergunta: question.trim(), resposta: answer.trim() });
+                  const deck = deckPath.trim();
+                  if (!deck) return toast.error("Informe o caminho do deck (ex: Deck::Subdeck)");
+                  if (!question.trim() || !answer.trim()) return;
+
+                  try {
+                    const themeRow = await createNewTheme({ data: { path: deck } });
+                    if (!themeRow?.id) throw new Error("Não foi possível resolver/usar o tema.");
+                    create.mutate({ theme_id: themeRow.id, pergunta: question.trim(), resposta: answer.trim() });
+                  } catch (err: any) {
+                    toast.error(err?.message ?? String(err));
                   }
                 }}
               >
                 <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
                   <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                    Tema
-                    <select
-                      value={themeId}
-                      onChange={(event) => setThemeId(event.target.value)}
-                      className="h-11 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
-                    >
-                      <option value="">Selecione um tema</option>
-                      {themes.map((theme) => (
-                        <option key={theme.id} value={theme.id}>
-                          {theme.name}
-                        </option>
-                      ))}
-                    </select>
+                    Deck (use `::` para sub-decks)
+                    <Input
+                      value={deckPath}
+                      onChange={(event) => setDeckPath(event.target.value)}
+                      placeholder="Ex: Biologia::Genética"
+                    />
                   </label>
                   <label className="flex flex-col gap-2 text-sm text-muted-foreground">
                     Pergunta
@@ -220,9 +236,7 @@ function RevisoesPage() {
                 </label>
                 <Button
                   type="submit"
-                  disabled={
-                    create.isPending || !question.trim() || !answer.trim() || !themeId || themes.length === 0
-                  }
+                  disabled={create.isPending || !question.trim() || !answer.trim()}
                 >
                   {create.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -251,6 +265,18 @@ function RevisoesPage() {
                 </p>
               ) : (
                 <>
+                  {showSession && (
+                    <>
+                      {/* Render fullscreen review session */}
+                      <div className="fixed inset-0 z-50">
+                        <ReviewSession
+                          cards={cardsToReview}
+                          onExit={() => setShowSession(false)}
+                          onComplete={() => setShowSession(false)}
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="mb-4 text-sm text-muted-foreground">{reviewCount} cards para revisar hoje</div>
                   <ul className="space-y-3">
                     {cardsToReview.map((card) => {

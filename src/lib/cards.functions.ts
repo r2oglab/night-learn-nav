@@ -16,29 +16,47 @@ export const listCards = createServerFn({ method: "GET" })
 
 export const createCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { theme_id: string; pergunta: string; resposta: string }) => {
+  .inputValidator((input: { theme_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) => {
     const themeId = input.theme_id?.trim();
     const pergunta = input.pergunta?.trim();
     const resposta = input.resposta?.trim();
+    const invert = !!input.invert;
+    const cloze = !!input.cloze;
     if (!themeId) throw new Error("Informe o tema do card.");
     if (!pergunta) throw new Error("Informe a pergunta do card.");
-    if (!resposta) throw new Error("Informe a resposta do card.");
-    return { theme_id: themeId, pergunta, resposta };
+    if (!cloze && !resposta) throw new Error("Informe a resposta do card.");
+    return { theme_id: themeId, pergunta, resposta, invert, cloze };
   })
   .handler(async ({ data, context }) => {
-    const { data: row, error } = await context.supabase
-      .from("cards")
-      .insert({
+    // primary card
+    const inserts: any[] = [];
+    inserts.push({
+      user_id: context.userId,
+      theme_id: data.theme_id,
+      pergunta: data.pergunta,
+      resposta: data.cloze ? data.pergunta : data.resposta,
+      ...newCardFields(),
+    });
+
+    // if inverted and not cloze, create a swapped card
+    if (data.invert && !data.cloze) {
+      inserts.push({
         user_id: context.userId,
         theme_id: data.theme_id,
-        pergunta: data.pergunta,
-        resposta: data.resposta,
+        pergunta: data.resposta,
+        resposta: data.pergunta,
         ...newCardFields(),
-      })
-      .select("*")
-      .single();
+      });
+    }
+
+    const { data: rows, error } = await context.supabase
+      .from("cards")
+      .insert(inserts)
+      .select("*");
     if (error) throw new Error(error.message);
-    return row;
+
+    // return the first inserted row as primary
+    return Array.isArray(rows) ? rows[0] : rows;
   });
 
 export const reviewCard = createServerFn({ method: "POST" })
@@ -57,7 +75,15 @@ export const reviewCard = createServerFn({ method: "POST" })
     if (error || !card) throw new Error(error?.message ?? "Card não encontrado.");
 
     const now = new Date();
-    const fields = reviewCardFsrs(card as CardRow, data.rating, now);
+    // fetch user settings to use desired_retention
+    const { data: settings } = await context.supabase
+      .from("user_settings")
+      .select("desired_retention,last_review_date,streak")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+
+    const desiredRetention = settings?.desired_retention ?? 0.9;
+    const fields = reviewCardFsrs(card as CardRow, data.rating, now, desiredRetention);
 
     const { data: updated, error: updateError } = await context.supabase
       .from("cards")
@@ -66,6 +92,34 @@ export const reviewCard = createServerFn({ method: "POST" })
       .select("*")
       .single();
     if (updateError) throw new Error(updateError.message);
+
+    // update user_settings streak / last_review_date
+    try {
+      const today = new Date();
+      const todayStr = today.toISOString().slice(0, 10);
+      const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+      const prevDate = settings?.last_review_date ? settings.last_review_date : null;
+      const prevStreak = typeof settings?.streak === "number" ? settings.streak : 0;
+
+      let newStreak = prevStreak;
+      if (prevDate === todayStr) {
+        // already counted today
+        newStreak = prevStreak;
+      } else if (prevDate === yesterdayStr) {
+        newStreak = prevStreak + 1;
+      } else {
+        newStreak = 1;
+      }
+
+      await context.supabase
+        .from("user_settings")
+        .upsert({ user_id: context.userId, last_review_date: todayStr, streak: newStreak }, { onConflict: ["user_id"] });
+    } catch (e) {
+      // non-fatal
+      console.warn("Failed to update user_settings streak", e);
+    }
 
     return updated;
   });
@@ -87,7 +141,7 @@ export const deleteCard = createServerFn({ method: "DELETE" })
     return deleted;
   });
 
-export const updateCard = createServerFn({ method: "PATCH" })
+export const updateCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string; pergunta: string; resposta: string }) => {
     if (!input.id?.trim()) throw new Error("ID do card inválido.");

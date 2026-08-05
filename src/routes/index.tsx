@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,8 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { listThemes } from "@/lib/themes.functions";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -61,8 +64,17 @@ function Index() {
   const isViewingCurrentMonth = viewYear === realNow.getFullYear() && viewMonth === realNow.getMonth();
   const today = isViewingCurrentMonth ? realNow.getDate() : null;
 
+  const fetchThemes = useServerFn(listThemes);
+  const { data: allThemes = [], isLoading: themesLoading } = useQuery({
+    queryKey: ["themes"],
+    queryFn: () => fetchThemes(),
+  });
+
+  const [showOthersDay, setShowOthersDay] = useState<number | null>(null);
+
   const { data: reviewsByDay = {}, isLoading } = useQuery({
-    queryKey: ["cards", viewYear, viewMonth],
+    queryKey: ["cards", viewYear, viewMonth, /* depends on themes */ allThemes.length],
+    enabled: !themesLoading,
     queryFn: async () => {
       const start = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-01`;
       const end = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${daysInMonth}`;
@@ -94,7 +106,21 @@ function Index() {
       const todayStart = new Date(realNow.getFullYear(), realNow.getMonth(), realNow.getDate());
 
       type DayEntry = { id: string; theme: string; statuses: Status[]; labelDate?: string };
-      const grouped: Record<number, DayEntry[]> = {};
+      // Build theme map to resolve root themes
+      const themeById = Object.fromEntries((allThemes ?? []).map((t: any) => [t.id, t]));
+
+      function findRootName(themeId?: string, fallback?: string) {
+        if (!themeId) return fallback ?? "(sem tema)";
+        let cur = themeById[themeId];
+        if (!cur) return fallback ?? "(sem tema)";
+        while (cur && cur.parent_id) {
+          cur = themeById[cur.parent_id];
+        }
+        return cur?.name ?? fallback ?? "(sem tema)";
+      }
+
+      type DayGroup = { theme: string; counts: Record<Status, number>; total: number };
+      const grouped: Record<number, Map<string, DayGroup>> = {};
 
       // process dueData: decide only between overdue and pending
       for (const row of dueData ?? []) {
@@ -103,40 +129,83 @@ function Index() {
         const dueDate = new Date(`${row.due}T00:00:00`);
 
         const status: Status = dueDate < todayStart ? "overdue" : "pending";
-
-        const themeLabel = row.themes?.name ?? row.pergunta;
-        (grouped[day] ??= []);
-
-        const existing = grouped[day]!.find((e) => e.id === row.id);
-        if (existing) {
-          if (!existing.statuses.includes(status)) existing.statuses.push(status);
-        } else {
-          grouped[day]!.push({ id: row.id, theme: themeLabel, statuses: [status], labelDate: row.due });
-        }
+        const rootName = findRootName(row.theme_id, row.themes?.name ?? row.pergunta);
+        grouped[day] = grouped[day] ?? new Map();
+        const m = grouped[day];
+        const prev = m.get(rootName) ?? { theme: rootName, counts: { done: 0, overdue: 0, pending: 0 }, total: 0 };
+        prev.counts[status] = (prev.counts[status] ?? 0) + 1;
+        prev.total += 1;
+        m.set(rootName, prev);
       }
 
       // process reviewData: add 'done' status on the exact review day
       for (const row of reviewData ?? []) {
         const day = dayFromISO(row.last_review);
         if (!day) continue;
-        const themeLabel = row.themes?.name ?? row.pergunta;
-        (grouped[day] ??= []);
-
-        const existing = grouped[day]!.find((e) => e.id === row.id);
-        if (existing) {
-          if (!existing.statuses.includes("done")) existing.statuses.push("done");
-        } else {
-          grouped[day]!.push({ id: row.id, theme: themeLabel, statuses: ["done"], labelDate: row.last_review });
-        }
+        const rootName = findRootName(row.theme_id, row.themes?.name ?? row.pergunta);
+        grouped[day] = grouped[day] ?? new Map();
+        const m = grouped[day];
+        const prev = m.get(rootName) ?? { theme: rootName, counts: { done: 0, overdue: 0, pending: 0 }, total: 0 };
+        prev.counts["done"] = (prev.counts["done"] ?? 0) + 1;
+        prev.total += 1;
+        m.set(rootName, prev);
       }
 
       // convert DayEntry to Review[] (strip ids/labelDate)
-      const result: Record<number, Review[]> = {};
+      const result: Record<number, DayGroup[]> = {};
       for (const dayStr of Object.keys(grouped)) {
         const day = Number(dayStr);
-        result[day] = grouped[day].map((e) => ({ theme: e.theme, statuses: e.statuses }));
+        const arr = Array.from(grouped[day].values());
+        arr.sort((a, b) => b.total - a.total);
+        result[day] = arr;
       }
       return result;
+    },
+  });
+
+  // Heatmap: last 35 days up to today
+  const heatStart = new Date(realNow);
+  heatStart.setDate(realNow.getDate() - 34);
+  const heatStartISO = `${heatStart.getFullYear()}-${String(heatStart.getMonth() + 1).padStart(2, "0")}-${String(heatStart.getDate()).padStart(2, "0")}`;
+  const heatEndISO = `${realNow.getFullYear()}-${String(realNow.getMonth() + 1).padStart(2, "0")}-${String(realNow.getDate()).padStart(2, "0")}`;
+
+  const { data: heatmap = [], isLoading: heatLoading } = useQuery({
+    queryKey: ["heatmap", heatStartISO, heatEndISO],
+    enabled: !themesLoading,
+    queryFn: async () => {
+      const { data: dueData } = await supabase
+        .from("cards")
+        .select("id,due,last_review")
+        .gte("due", heatStartISO)
+        .lte("due", heatEndISO);
+
+      const dayMap: Record<string, { due: number; reviewed: number }> = {};
+      for (let i = 0; i < 35; i++) {
+        const d = new Date(heatStart);
+        d.setDate(d.getDate() + i);
+        const key = d.toISOString().slice(0, 10);
+        dayMap[key] = { due: 0, reviewed: 0 };
+      }
+
+      for (const row of dueData ?? []) {
+        const due = row.due?.slice(0, 10);
+        if (!due) continue;
+        if (!dayMap[due]) continue;
+        dayMap[due].due += 1;
+        const last = row.last_review?.slice(0, 10);
+        if (last === due) dayMap[due].reviewed += 1;
+      }
+
+      const arr: number[] = [];
+      for (let i = 0; i < 35; i++) {
+        const d = new Date(heatStart);
+        d.setDate(d.getDate() + i);
+        const key = d.toISOString().slice(0, 10);
+        const stats = dayMap[key] ?? { due: 0, reviewed: 0 };
+        const pct = stats.due === 0 ? 0 : Math.round((stats.reviewed / stats.due) * 100);
+        arr.push(pct);
+      }
+      return arr;
     },
   });
 
@@ -157,22 +226,9 @@ function Index() {
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-5" />
             <h1 className="text-sm font-medium">Dashboard</h1>
-            <div className="ml-auto flex items-center gap-4">
-              {legend.map((item) => (
-                <div key={item.label} className="hidden items-center gap-2 sm:flex">
-                  <span
-                    className={cn(
-                      "size-2.5 rounded-full",
-                      item.status === "done" && "bg-success",
-                      item.status === "overdue" && "bg-overdue",
-                      item.status === "pending" && "bg-pending",
-                    )}
-                  />
-                  <span className="text-xs text-muted-foreground">{item.label}</span>
-                </div>
-              ))}
-            </div>
+            <div className="ml-auto" />
           </header>
+
 
           <main className="flex flex-1 justify-center p-6">
             <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
@@ -217,6 +273,62 @@ function Index() {
                 </div>
               </div>
 
+              <div className="mb-4 flex items-center gap-4">
+                {/* Heatmap 35 days */}
+                <div className="flex gap-1">
+                  {heatmap.map((pct: number, idx: number) => {
+                    const bucket = pct >= 100 ? 4 : pct >= 75 ? 3 : pct >= 50 ? 2 : pct >= 25 ? 1 : 0;
+                    const colors = ["bg-muted/30", "bg-red-200", "bg-amber-300", "bg-yellow-400", "bg-emerald-400"];
+                    return (
+                      <div key={idx} title={`${pct}%`} className={`h-3 w-5 rounded ${colors[bucket]}`} />
+                    );
+                  })}
+                </div>
+
+                {/* Pie chart for today */}
+                <div className="w-40 h-10">
+                  <ResponsiveContainer width="100%" height={60}>
+                    <PieChart>
+                      {(() => {
+                        const todayArr = (reviewsByDay[today] ?? []) as any[];
+                        let done = 0;
+                        let overdue = 0;
+                        let pending = 0;
+                        for (const g of todayArr) {
+                          done += g.counts?.done ?? 0;
+                          overdue += g.counts?.overdue ?? 0;
+                          pending += g.counts?.pending ?? 0;
+                        }
+                        const total = done + overdue + pending;
+                        const data = [
+                          { name: "Revisados", value: done },
+                          { name: "Atrasados", value: overdue },
+                          { name: "Pendentes", value: pending },
+                        ];
+                        const COLORS = ["#10B981", "#F97316", "#F59E0B"];
+                        return (
+                          <>
+                            <Pie data={data} dataKey="value" innerRadius={12} outerRadius={24} paddingAngle={1}>
+                              {data.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                          </>
+                        );
+                      })()}
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="text-[11px] text-muted-foreground">{(() => {
+                    const todayArr = (reviewsByDay[today] ?? []) as any[];
+                    let done = 0; let overdue = 0; let pending = 0;
+                    for (const g of todayArr) { done += g.counts?.done ?? 0; overdue += g.counts?.overdue ?? 0; pending += g.counts?.pending ?? 0; }
+                    const total = done + overdue + pending;
+                    return `${done}/${total}`;
+                  })()}</div>
+                </div>
+
+              </div>
+
               <div className="overflow-hidden rounded-xl border border-border bg-card">
                 <div className="grid grid-cols-7 border-b border-border">
                   {weekDays.map((d) => (
@@ -254,21 +366,46 @@ function Index() {
                             </span>
                           </div>
                           <div className="space-y-1">
-                            {(reviewsByDay[day] ?? []).map((review: Review, idx: number) => (
-                              <div key={idx} className="space-y-1">
-                                {review.statuses.map((s, si) => (
-                                  <div
-                                    key={si}
-                                    className={cn(
-                                      "truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-                                      statusStyles[s as Status],
-                                    )}
-                                  >
-                                    {review.theme}
+                            {/* reviewsByDay[day] is an array of DayGroup {theme, total, counts} */}
+                            {((reviewsByDay[day] ?? []) as any[]).map((group, idx) => {
+                              // show only top 2; rest will be in 'Outros'
+                              if (idx < 2) {
+                                return (
+                                  <div key={group.theme} className="truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium">
+                                    {group.theme} · {group.total}
                                   </div>
-                                ))}
-                              </div>
-                            ))}
+                                );
+                              }
+                              return null;
+                            })}
+                            {(() => {
+                              const groups = (reviewsByDay[day] ?? []) as any[];
+                              if (!groups || groups.length <= 2) return null;
+                              const others = groups.slice(2);
+                              const otherCount = others.length;
+                              const title = others.map((g) => `${g.theme} · ${g.total}`).join("\n");
+                              return (
+                                <div className="mt-1">
+                                  <button
+                                    className="text-[11px] text-muted-foreground underline"
+                                    title={title}
+                                    onClick={() => setShowOthersDay((s) => (s === day ? null : day))}
+                                  >
+                                    Outros {otherCount}
+                                  </button>
+                                  {showOthersDay === day && (
+                                    <div className="mt-2 rounded border border-border bg-popover p-2 text-xs">
+                                      {others.map((g) => (
+                                        <div key={g.theme} className="flex justify-between">
+                                          <span>{g.theme}</span>
+                                          <span className="text-muted-foreground">{g.total}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </>
                       )}

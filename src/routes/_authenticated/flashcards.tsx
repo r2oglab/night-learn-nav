@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Trash, Loader2, Edit3 } from "lucide-react";
+import { Trash, Loader2, Edit3, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -84,6 +84,141 @@ function FlashcardsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Build maps for tree
+  const themeById = Object.fromEntries(themes.map((t: any) => [t.id, t]));
+  const childrenMap: Record<string, any[]> = {};
+  for (const t of themes) {
+    const pid = t.parent_id ?? "__root";
+    childrenMap[pid] = childrenMap[pid] || [];
+    childrenMap[pid].push(t);
+  }
+
+  const getPath = (themeId: string) => {
+    const parts: string[] = [];
+    let cur: any = themeById[themeId];
+    while (cur) {
+      parts.push(cur.name);
+      if (!cur.parent_id) break;
+      cur = themeById[cur.parent_id];
+    }
+    return parts.reverse().join("::");
+  };
+
+  const [openIds, setOpenIds] = useState<Record<string, boolean>>({});
+  const toggle = (id: string) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
+
+  function TreeNode({ theme, level = 0 }: { theme: any; level?: number }) {
+    const children = childrenMap[theme.id] ?? [];
+    const isOpen = !!openIds[theme.id];
+    const themeCards = cards.filter((c: any) => c.theme_id === theme.id);
+
+    return (
+      <section key={theme.id} className="rounded-xl border border-border bg-card p-3">
+        <div className="mb-2 flex items-center gap-3">
+          {children.length > 0 ? (
+            <Button size="sm" variant="ghost" onClick={() => toggle(theme.id)}>
+              {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+            </Button>
+          ) : (
+            <div style={{ width: 36 }} />
+          )}
+
+          {editingThemeId === theme.id ? (
+            <div className="flex items-center gap-2 w-full">
+              <Input value={editingThemeName} onChange={(e) => setEditingThemeName(e.target.value)} />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => updateThemeMutation.mutate({ id: theme.id, name: editingThemeName })}>
+                  Salvar
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingThemeId(null)}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h3 className="text-sm font-medium">{theme.name}</h3>
+              <div className="ml-auto flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => {
+                  setEditingThemeId(theme.id);
+                  setEditingThemeName(theme.name);
+                }}>
+                  Editar
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => {
+                  const count = themeCards.length;
+                  const ok = window.confirm(`Excluir tema "${theme.name}"? Isso também removerá ${count} card(s) deste tema.`);
+                  if (ok) removeTheme.mutate(theme.id);
+                }}>
+                  Excluir tema
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* If leaf, render cards */}
+        {children.length === 0 ? (
+          themeCards.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum card neste tema.</p>
+          ) : (
+            <ul className="space-y-3">
+              {themeCards.map((card: any) => (
+                <li key={card.id} className="flex items-start justify-between gap-4">
+                  {editingId === card.id ? (
+                    <div className="flex-1">
+                      <label className="flex flex-col gap-2">
+                        <Input value={editingQuestion} onChange={(e) => setEditingQuestion(e.target.value)} />
+                        <Input value={editingAnswer} onChange={(e) => setEditingAnswer(e.target.value)} />
+                      </label>
+                      <div className="mt-2 flex gap-2">
+                        <Button size="sm" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate({ id: card.id, pergunta: editingQuestion, resposta: editingAnswer })}>
+                          Salvar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancelar</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="font-medium">{card.pergunta}</p>
+                        <p className="text-sm text-muted-foreground">{card.resposta}</p>
+                        <div className="mt-1 text-xs text-muted-foreground">{getPath(card.theme_id)}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setEditingId(card.id);
+                          setEditingQuestion(card.pergunta);
+                          setEditingAnswer(card.resposta);
+                        }}>
+                          <Edit3 className="size-4" /> Editar
+                        </Button>
+                        <Button size="sm" variant="destructive" disabled={delMutation.isPending} onClick={() => delMutation.mutate(card.id)}>
+                          <Trash className="size-4" /> Excluir
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
+        ) : (
+          // If has children and is open, render children
+          isOpen && (
+            <div className="mt-3 space-y-3 pl-6">
+              {children.map((child) => (
+                <TreeNode key={child.id} theme={child} level={level + 1} />
+              ))}
+            </div>
+          )
+        )}
+      </section>
+    );
+  }
+
+  const roots = childrenMap["__root"] || [];
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background text-foreground">
@@ -103,126 +238,16 @@ function FlashcardsPage() {
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
               ) : themes.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                  Nenhum tema ainda.
-                </p>
+                <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhum tema ainda.</p>
               ) : cardsLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <div className="space-y-6">
-                  {themes.map((theme) => {
-                    const themeCards = cards.filter((c) => c.theme_id === theme.id);
-                    return (
-                      <section key={theme.id} className="rounded-xl border border-border bg-card p-4">
-                        <div className="mb-3 flex items-center justify-between">
-                          {editingThemeId === theme.id ? (
-                            <div className="flex items-center gap-2 w-full">
-                              <Input value={editingThemeName} onChange={(e) => setEditingThemeName(e.target.value)} />
-                              <div className="flex gap-2">
-                                <Button size="sm" onClick={() => updateThemeMutation.mutate({ id: theme.id, name: editingThemeName })}>
-                                  Salvar
-                                </Button>
-                                <Button size="sm" variant="ghost" onClick={() => setEditingThemeId(null)}>
-                                  Cancelar
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <h2 className="text-sm font-medium">{theme.name}</h2>
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setEditingThemeId(theme.id);
-                                    setEditingThemeName(theme.name);
-                                  }}
-                                >
-                                  Editar
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => {
-                                    const count = themeCards.length;
-                                    const ok = window.confirm(
-                                      `Excluir tema "${theme.name}"? Isso também removerá ${count} card(s) deste tema.`,
-                                    );
-                                    if (ok) removeTheme.mutate(theme.id);
-                                  }}
-                                >
-                                  Excluir tema
-                                </Button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        {themeCards.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">Nenhum card neste tema.</p>
-                        ) : (
-                          <ul className="space-y-3">
-                              {themeCards.map((card) => (
-                                <li key={card.id} className="flex items-start justify-between gap-4">
-                                  {editingId === card.id ? (
-                                    <div className="flex-1">
-                                      <label className="flex flex-col gap-2">
-                                        <Input value={editingQuestion} onChange={(e) => setEditingQuestion(e.target.value)} />
-                                        <Input value={editingAnswer} onChange={(e) => setEditingAnswer(e.target.value)} />
-                                      </label>
-                                      <div className="mt-2 flex gap-2">
-                                        <Button
-                                          size="sm"
-                                          disabled={updateMutation.isPending}
-                                          onClick={() => updateMutation.mutate({ id: card.id, pergunta: editingQuestion, resposta: editingAnswer })}
-                                        >
-                                          Salvar
-                                        </Button>
-                                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                                          Cancelar
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <div>
-                                        <p className="font-medium">{card.pergunta}</p>
-                                        <p className="text-sm text-muted-foreground">{card.resposta}</p>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => {
-                                            setEditingId(card.id);
-                                            setEditingQuestion(card.pergunta);
-                                            setEditingAnswer(card.resposta);
-                                          }}
-                                        >
-                                          <Edit3 className="size-4" />
-                                          Editar
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="destructive"
-                                          disabled={delMutation.isPending}
-                                          onClick={() => delMutation.mutate(card.id)}
-                                        >
-                                          <Trash className="size-4" />
-                                          Excluir
-                                        </Button>
-                                      </div>
-                                    </>
-                                  )}
-                                </li>
-                              ))}
-                          </ul>
-                        )}
-                      </section>
-                    );
-                  })}
+                <div className="space-y-4">
+                  {roots.map((root) => (
+                    <TreeNode key={root.id} theme={root} />
+                  ))}
                 </div>
               )}
             </div>
@@ -232,3 +257,5 @@ function FlashcardsPage() {
     </SidebarProvider>
   );
 }
+
+export default FlashcardsPage;

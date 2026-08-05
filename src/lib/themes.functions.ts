@@ -6,8 +6,8 @@ export const listThemes = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
-      .from("themes")
-      .select("id,user_id,name,created_at")
+        .from("themes")
+        .select("id,user_id,name,parent_id,created_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];

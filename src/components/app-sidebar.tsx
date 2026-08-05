@@ -28,6 +28,7 @@ const items = [
   { title: "Dashboard", icon: LayoutDashboard, to: "/" as const },
   { title: "Revisões", icon: Repeat, to: "/revisoes" as const },
   { title: "Flashcards", icon: Layers, to: "/flashcards" as const },
+  { title: "Criação", icon: Plus, to: "/criacao" as const },
   { title: "Configurações", icon: Settings, to: "/configuracoes" as const },
 ];
 
