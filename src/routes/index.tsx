@@ -181,6 +181,9 @@ function Index() {
     enabled: !decksLoading,
     retry: 2,
     queryFn: async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      console.log("[heatmap] sessão no momento da busca:", sessionData?.session?.user?.id ?? "SEM SESSÃO");
+
       const { data: dueData, error: heatError } = await supabase
         .from("cards")
         .select("id,due,last_review")
