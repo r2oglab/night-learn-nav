@@ -11,7 +11,6 @@ import { Slider } from "@/components/ui/slider";
 import { getUserSettings, upsertUserSettings } from "@/lib/user_settings.functions";
 import { listCards } from "@/lib/cards.functions";
 import { listThemes } from "@/lib/themes.functions";
-import { saveAs } from "file-saver";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/configuracoes")({
@@ -38,7 +37,7 @@ function Configuracoes() {
       const userCards = cards.filter((c: any) => c.user_id === user?.id);
       const themeById = Object.fromEntries((themes || []).map((t: any) => [t.id, t]));
 
-      const rows = userCards.map((c: any) => ({
+      const rows: Record<string, any>[] = userCards.map((c: any) => ({
         tema: themeById[c.theme_id]?.name ?? c.theme_id,
         pergunta: c.pergunta,
         resposta: c.resposta,

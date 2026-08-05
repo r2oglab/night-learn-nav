@@ -155,7 +155,7 @@ function Index() {
       const result: Record<number, DayGroup[]> = {};
       for (const dayStr of Object.keys(grouped)) {
         const day = Number(dayStr);
-        const arr = Array.from(grouped[day].values());
+        const arr = Array.from(grouped[day]?.values() ?? []);
         arr.sort((a, b) => b.total - a.total);
         result[day] = arr;
       }
@@ -290,7 +290,7 @@ function Index() {
                   <ResponsiveContainer width="100%" height={60}>
                     <PieChart>
                       {(() => {
-                        const todayArr = (reviewsByDay[today] ?? []) as any[];
+                        const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                         let done = 0;
                         let overdue = 0;
                         let pending = 0;
@@ -319,7 +319,7 @@ function Index() {
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="text-[11px] text-muted-foreground">{(() => {
-                    const todayArr = (reviewsByDay[today] ?? []) as any[];
+                    const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                     let done = 0; let overdue = 0; let pending = 0;
                     for (const g of todayArr) { done += g.counts?.done ?? 0; overdue += g.counts?.overdue ?? 0; pending += g.counts?.pending ?? 0; }
                     const total = done + overdue + pending;
