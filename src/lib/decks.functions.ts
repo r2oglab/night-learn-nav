@@ -95,7 +95,7 @@ export const deleteDeck = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const updateDeck = createServerFn({ method: "PATCH" })
+export const updateDeck = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string; name: string }) => {
     const id = input.id?.trim();
