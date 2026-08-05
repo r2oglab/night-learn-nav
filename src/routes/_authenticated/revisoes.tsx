@@ -91,7 +91,7 @@ function RevisoesPage() {
   };
 
   const createThemeMutation = useMutation({
-    mutationFn: (name: string) => createNewTheme({ data: { name } }),
+    mutationFn: (name: string) => createNewTheme({ data: { path: name } }),
     onSuccess: () => {
       setThemeName("");
       invalidate();
