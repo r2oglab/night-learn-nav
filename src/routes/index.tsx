@@ -301,9 +301,9 @@ function Index() {
                 </div>
               </div>
 
-              <div className="mb-4 grid grid-cols-[auto_120px] items-start gap-4 overflow-x-auto">
+              <div className="mb-4 grid grid-cols-[auto_160px] items-stretch gap-4 overflow-x-auto">
              {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
-                <div className="inline-flex flex-col gap-1.5 rounded-xl border border-border bg-card p-3">
+                <div className="inline-flex flex-col justify-center gap-1.5 justify-self-start rounded-xl border border-border bg-card p-3">
                   <div className="grid grid-cols-7 gap-1.5">
                     {weekDays.map((d) => (
                       <div key={d} className="size-6 text-center text-[10px] font-medium uppercase leading-6 text-muted-foreground">
