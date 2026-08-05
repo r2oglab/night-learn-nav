@@ -1,18 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { CalendarClock, Loader2, Plus, Play } from "lucide-react";
+import { CalendarClock, Loader2, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ratingOptions, stateLabels } from "@/lib/fsrs";
-import { createCard, listCards, reviewCard } from "@/lib/cards.functions";
-import { createDeck, listDecks } from "@/lib/decks.functions";
+import { listCards, reviewCard } from "@/lib/cards.functions";
+import { listDecks } from "@/lib/decks.functions";
 import { cn } from "@/lib/utils";
 import ReviewSession from "@/components/review-session";
 
@@ -54,14 +53,7 @@ function RevisoesPage() {
   const queryClient = useQueryClient();
   const fetchDecks = useServerFn(listDecks);
   const fetchCards = useServerFn(listCards);
-  const addCard = useServerFn(createCard);
-  const createNewDeck = useServerFn(createDeck);
   const gradeCard = useServerFn(reviewCard);
-  const [deckName, setDeckName] = useState("");
-  const [deckId, setDeckId] = useState("");
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [deckPath, setDeckPath] = useState("");
 
   const { data: decks = [], isLoading: decksLoading } = useQuery({
     queryKey: ["decks"],
@@ -92,29 +84,6 @@ function RevisoesPage() {
     void queryClient.invalidateQueries({ queryKey: ["cards"] });
     void queryClient.invalidateQueries({ queryKey: ["decks"] });
   };
-
-  const createDeckMutation = useMutation({
-    mutationFn: (name: string) => createNewDeck({ data: { path: name } }),
-    onSuccess: () => {
-      setDeckName("");
-      invalidate();
-      toast.success("Deck criado");
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const create = useMutation({
-    mutationFn: (vars: { deck_id: string; pergunta: string; resposta: string }) =>
-      addCard({ data: vars }),
-    onSuccess: () => {
-      setQuestion("");
-      setAnswer("");
-      setDeckId("");
-      invalidate();
-      toast.success("Card adicionado");
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
 
   const review = useMutation({
     mutationFn: (vars: { id: string; rating: number }) =>
@@ -159,101 +128,13 @@ function RevisoesPage() {
 
           <main className="flex flex-1 justify-center p-6">
             <div className="w-full max-w-3xl">
-              <form
-                className="mb-6 grid gap-3"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (deckName.trim()) {
-                    createDeckMutation.mutate(deckName.trim());
-                  }
-                }}
-              >
-                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                  <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                    Novo deck
-                    <Input
-                      value={deckName}
-                      onChange={(event) => setDeckName(event.target.value)}
-                      placeholder="Nome do deck"
-                    />
-                  </label>
-                  <Button
-                    type="submit"
-                    disabled={createDeckMutation.isPending || !deckName.trim()}
-                  >
-                    {createDeckMutation.isPending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Plus className="size-4" />
-                    )}
-                    Criar deck
-                  </Button>
-                </div>
-              </form>
-
-              <form
-                className="mb-6 grid gap-3"
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  const deck = deckPath.trim();
-                  if (!deck) { toast.error("Informe o caminho do deck (ex: Deck::Subdeck)"); return; }
-                  if (!question.trim() || !answer.trim()) return;
-
-                  try {
-                    const deckRow = await createNewDeck({ data: { path: deck } });
-                    if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
-                    create.mutate({ deck_id: deckRow.id, pergunta: question.trim(), resposta: answer.trim() });
-                  } catch (err: any) {
-                    toast.error(err?.message ?? String(err));
-                  }
-                }}
-              >
-                <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
-                  <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                    Deck (use `::` para sub-decks)
-                    <Input
-                      value={deckPath}
-                      onChange={(event) => setDeckPath(event.target.value)}
-                      placeholder="Ex: Biologia::Genética"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                    Pergunta
-                    <Input
-                      value={question}
-                      onChange={(event) => setQuestion(event.target.value)}
-                      placeholder="Escreva a pergunta do card"
-                    />
-                  </label>
-                </div>
-                <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                  Resposta
-                  <Input
-                    value={answer}
-                    onChange={(event) => setAnswer(event.target.value)}
-                    placeholder="Escreva a resposta do card"
-                  />
-                </label>
-                <Button
-                  type="submit"
-                  disabled={create.isPending || !question.trim() || !answer.trim()}
-                >
-                  {create.isPending ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Plus className="size-4" />
-                  )}
-                  Criar card
-                </Button>
-              </form>
-
               {decksLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
               ) : decks.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                  Crie um deck antes de adicionar cards. O grupo de decks mantém apenas nomes e agrupamentos.
+                  Nenhum deck ainda. Crie um deck na página de criação.
                 </p>
               ) : cardsLoading ? (
                 <div className="flex justify-center py-12">

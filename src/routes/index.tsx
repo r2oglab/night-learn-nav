@@ -273,9 +273,9 @@ function Index() {
                 </div>
               </div>
 
-              <div className="mb-4 flex items-center gap-4">
+              <div className="mb-4 flex items-start gap-4">
                 {/* Heatmap 35 days */}
-                <div className="flex gap-1">
+                <div className="flex shrink-0 gap-1">
                   {heatmap.map((pct: number, idx: number) => {
                     const bucket = pct >= 100 ? 4 : pct >= 75 ? 3 : pct >= 50 ? 2 : pct >= 25 ? 1 : 0;
                     const colors = ["bg-muted/30", "bg-red-200", "bg-amber-300", "bg-yellow-400", "bg-emerald-400"];
@@ -286,7 +286,7 @@ function Index() {
                 </div>
 
                 {/* Pie chart for today */}
-                <div className="w-40 h-10">
+                <div className="w-40 h-16 shrink-0">
                   <ResponsiveContainer width="100%" height={60}>
                     <PieChart>
                       {(() => {
@@ -370,8 +370,20 @@ function Index() {
                             {((reviewsByDay[day] ?? []) as any[]).map((group, idx) => {
                               // show only top 2; rest will be in 'Outros'
                               if (idx < 2) {
+                                const status: Status =
+                                  group.counts?.overdue > 0
+                                    ? "overdue"
+                                    : group.counts?.done === group.total
+                                      ? "done"
+                                      : "pending";
                                 return (
-                                  <div key={group.deck} className="truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium">
+                                  <div
+                                    key={group.deck}
+                                    className={cn(
+                                      "truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
+                                      statusStyles[status],
+                                    )}
+                                  >
                                     {group.deck} · {group.total}
                                   </div>
                                 );
