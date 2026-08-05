@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarClock, Loader2, Play } from "lucide-react";
@@ -9,8 +9,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { ratingOptions, stateLabels } from "@/lib/fsrs";
-import { listCards, reviewCard } from "@/lib/cards.functions";
+import { listCards } from "@/lib/cards.functions";
 import { listDecks } from "@/lib/decks.functions";
 import { cn } from "@/lib/utils";
 import ReviewSession from "@/components/review-session";
@@ -50,10 +49,8 @@ function daysUntil(due: string) {
 }
 
 function RevisoesPage() {
-  const queryClient = useQueryClient();
   const fetchDecks = useServerFn(listDecks);
   const fetchCards = useServerFn(listCards);
-  const gradeCard = useServerFn(reviewCard);
 
   const { data: decks = [], isLoading: decksLoading } = useQuery({
     queryKey: ["decks"],
@@ -80,24 +77,26 @@ function RevisoesPage() {
   const reviewCount = cardsToReview.length;
   const [showSession, setShowSession] = useState(false);
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["cards"] });
-    void queryClient.invalidateQueries({ queryKey: ["decks"] });
-  };
-
-  const review = useMutation({
-    mutationFn: (vars: { id: string; rating: number }) =>
-      gradeCard({ data: vars }),
-    onSuccess: (updated) => {
-      invalidate();
-      toast.success(
-        `Próxima revisão: ${dateFormatter.format(new Date(`${updated.due}T00:00:00`))}`,
-      );
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
   const deckMap = Object.fromEntries(decks.map((deck) => [deck.id, deck.name]));
+  const deckById = Object.fromEntries(decks.map((deck) => [deck.id, deck]));
+
+  function findRootDeckName(deckId?: string | null) {
+    if (!deckId) return "(sem deck)";
+    let cur: any = deckById[deckId];
+    if (!cur) return "(sem deck)";
+    while (cur && cur.parent_id) {
+      cur = deckById[cur.parent_id];
+    }
+    return cur?.name ?? "(sem deck)";
+  }
+
+  const groupsByRootDeck = new Map<string, typeof cardsToReview>();
+  for (const card of cardsToReview) {
+    const rootName = findRootDeckName(card.deck_id);
+    const group = groupsByRootDeck.get(rootName) ?? [];
+    group.push(card);
+    groupsByRootDeck.set(rootName, group);
+  }
 
   return (
     <SidebarProvider>
@@ -159,61 +158,43 @@ function RevisoesPage() {
                     </>
                   )}
                   <div className="mb-4 text-sm text-muted-foreground">{reviewCount} cards para revisar hoje</div>
-                  <ul className="space-y-3">
-                    {cardsToReview.map((card) => {
-                      const diff = daysUntil(card.due);
-                      return (
-                        <li key={card.id} className="rounded-xl border border-border bg-card p-4">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <div>
-                            <p className="font-medium">{card.pergunta}</p>
-                            <p className="text-sm text-muted-foreground">{card.resposta}</p>
-                          </div>
-                          <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {deckMap[card.deck_id] ?? "Deck desconhecido"}
-                          </span>
-                          <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-                            {stateLabels[card.state] ?? "Novo"}
-                          </span>
-                          <span
-                            className={cn(
-                              "flex items-center gap-1.5 text-xs",
-                              diff < 0 ? "text-overdue" : "text-muted-foreground",
-                            )}
-                          >
-                            <CalendarClock className="size-3.5" />
-                            {dateFormatter.format(new Date(`${card.due}T00:00:00`))}
-                            {" · "}
-                            {diff === 0
-                              ? "hoje"
-                              : diff > 0
-                                ? `em ${diff} dia(s)`
-                                : `atrasado ${Math.abs(diff)} dia(s)`}
-                          </span>
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {ratingOptions.map((option) => (
-                            <Button
-                              key={option.value}
-                              size="sm"
-                              variant="outline"
-                              disabled={review.isPending}
-                              onClick={() =>
-                                review.mutate({ id: card.id, rating: option.value })
-                              }
-                            >
-                              {option.label}
-                            </Button>
-                          ))}
-                          <span className="self-center text-[11px] text-muted-foreground">
-                            {card.reps} revisão(ões) · estabilidade {card.stability.toFixed(1)}d
-                          </span>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                  <div className="space-y-6">
+                    {Array.from(groupsByRootDeck.entries()).map(([rootName, groupCards]) => (
+                      <div key={rootName}>
+                        <h3 className="mb-2 text-sm font-semibold">{rootName}</h3>
+                        <ul className="space-y-3">
+                          {groupCards.map((card) => {
+                            const diff = daysUntil(card.due);
+                            return (
+                              <li key={card.id} className="rounded-xl border border-border bg-card p-4">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <p className="font-medium">{card.pergunta}</p>
+                                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                                    {deckMap[card.deck_id] ?? "Deck desconhecido"}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "flex items-center gap-1.5 text-xs",
+                                      diff < 0 ? "text-overdue" : "text-muted-foreground",
+                                    )}
+                                  >
+                                    <CalendarClock className="size-3.5" />
+                                    {dateFormatter.format(new Date(`${card.due}T00:00:00`))}
+                                    {" · "}
+                                    {diff === 0
+                                      ? "hoje"
+                                      : diff > 0
+                                        ? `em ${diff} dia(s)`
+                                        : `atrasado ${Math.abs(diff)} dia(s)`}
+                                  </span>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
                 </>
               )}
             </div>

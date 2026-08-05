@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { X, Play } from "lucide-react";
+import { Rating } from "ts-fsrs";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -80,7 +81,7 @@ export function ReviewSession({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/80">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
       <div className="relative w-full max-w-3xl rounded-lg bg-card p-6 shadow-lg">
         <button
           onClick={onExit}
@@ -114,10 +115,10 @@ export function ReviewSession({
               <Button onClick={() => setRevealed(true)}>Revelar resposta</Button>
             ) : (
               <div className="flex w-full gap-2">
-                <Button disabled={loading} onClick={() => void handleRating(0)} variant="destructive">Errei</Button>
-                <Button disabled={loading} onClick={() => void handleRating(2)}>Difícil</Button>
-                <Button disabled={loading} onClick={() => void handleRating(4)}>Bom</Button>
-                <Button disabled={loading} onClick={() => void handleRating(5)}>Fácil</Button>
+                <Button disabled={loading} onClick={() => void handleRating(Rating.Again)} variant="destructive">Errei</Button>
+                <Button disabled={loading} onClick={() => void handleRating(Rating.Hard)}>Difícil</Button>
+                <Button disabled={loading} onClick={() => void handleRating(Rating.Good)}>Bom</Button>
+                <Button disabled={loading} onClick={() => void handleRating(Rating.Easy)}>Fácil</Button>
               </div>
             )}
           </div>
