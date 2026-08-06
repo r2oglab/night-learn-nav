@@ -14,6 +14,7 @@ type Card = {
   resposta: string;
   due?: string;
   rootDeckName?: string;
+  level1SubdeckName?: string | null;
 };
 
 type DeckTally = { correct: number; incorrect: number };
@@ -32,6 +33,7 @@ export function ReviewSession({
   const [loading, setLoading] = useState(false);
   const [finished, setFinished] = useState(false);
   const [tally, setTally] = useState<Record<string, DeckTally>>({});
+  const [subdeckTally, setSubdeckTally] = useState<Record<string, Record<string, DeckTally>>>({});
   // Freeze the list once, at session start. The `cards` prop comes from a
   // live query in the parent that gets invalidated after every rating (so
   // the app-wide card list stays fresh), which would otherwise shrink out
@@ -66,6 +68,24 @@ export function ReviewSession({
           },
         };
       });
+
+      const subdeckName = current.level1SubdeckName;
+      if (subdeckName) {
+        setSubdeckTally((prev) => {
+          const root = prev[deckName] ?? {};
+          const entry = root[subdeckName] ?? { correct: 0, incorrect: 0 };
+          return {
+            ...prev,
+            [deckName]: {
+              ...root,
+              [subdeckName]: {
+                correct: entry.correct + (isCorrect ? 1 : 0),
+                incorrect: entry.incorrect + (isCorrect ? 0 : 1),
+              },
+            },
+          };
+        });
+      }
 
       setRevealed(false);
       const next = index + 1;
@@ -108,17 +128,19 @@ export function ReviewSession({
             {totalCorrect}/{totalCards} acertos no total
           </p>
 
-          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div className="mt-6 space-y-4">
             {deckNames.map((name) => {
               const { correct, incorrect } = tally[name];
               const total = correct + incorrect;
               const correctDash = total > 0 ? (correct / total) * circumference : 0;
+              const subdecks = subdeckTally[name] ?? {};
+              const subdeckNames = Object.keys(subdecks).sort(
+                (a, b) =>
+                  subdecks[b].correct + subdecks[b].incorrect - (subdecks[a].correct + subdecks[a].incorrect),
+              );
               return (
-                <div
-                  key={name}
-                  className="flex flex-col items-center gap-2 rounded-xl border border-border p-4 text-center"
-                >
-                  <svg width={80} height={80} viewBox="0 0 80 80">
+                <div key={name} className="flex items-start gap-4 rounded-xl border border-border p-4">
+                  <svg width={70} height={70} viewBox="0 0 80 80" className="shrink-0">
                     <circle cx={40} cy={40} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={12} />
                     {correct > 0 && (
                       <circle
@@ -146,8 +168,39 @@ export function ReviewSession({
                       />
                     )}
                   </svg>
-                  <p className="text-sm font-medium">{name}</p>
-                  <p className="text-xs text-muted-foreground">{correct}/{total} acertos</p>
+
+                  <div className="flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="text-sm font-medium">{name}</p>
+                      <p className="shrink-0 text-xs text-muted-foreground">{correct}/{total} acertos</p>
+                    </div>
+
+                    {subdeckNames.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {subdeckNames.map((subName) => {
+                          const { correct: sc, incorrect: si } = subdecks[subName];
+                          const stotal = sc + si;
+                          const pct = stotal > 0 ? Math.round((sc / stotal) * 100) : 0;
+                          return (
+                            <div key={subName} className="flex items-center gap-2 text-xs">
+                              <span className="w-28 shrink-0 truncate text-muted-foreground" title={subName}>
+                                {subName}
+                              </span>
+                              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className="h-full rounded-full bg-emerald-500"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className="w-10 shrink-0 text-right text-muted-foreground">
+                                {sc}/{stotal}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}

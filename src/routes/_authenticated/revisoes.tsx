@@ -78,6 +78,25 @@ function RevisoesPage() {
     return cur?.name ?? "(sem deck)";
   }
 
+  // First-level subdeck: the ancestor of the card's own deck that sits
+  // directly under the root ("primeiros subdecks do deck principal" —
+  // deeper descendants collapse into this level, and a card whose own deck
+  // *is* the root has no subdeck to report).
+  function findLevel1SubdeckName(deckId?: string | null): string | null {
+    if (!deckId) return null;
+    const chain: any[] = [];
+    let cur: any = deckById[deckId];
+    while (cur) {
+      chain.push(cur);
+      if (!cur.parent_id) break;
+      cur = deckById[cur.parent_id];
+    }
+    // chain[0] = the card's own deck, chain[last] = root.
+    // The first-level subdeck is the entry just below the root.
+    if (chain.length < 2) return null;
+    return chain[chain.length - 2].name;
+  }
+
   // Cards due today or earlier, each tagged with its root deck name — the
   // tag rides along into ReviewSession so the end-of-session summary can
   // group correct/incorrect per deck without a second lookup.
@@ -90,7 +109,11 @@ function RevisoesPage() {
         return false;
       }
     })
-    .map((card) => ({ ...card, rootDeckName: findRootDeckName(card.deck_id) }));
+    .map((card) => ({
+      ...card,
+      rootDeckName: findRootDeckName(card.deck_id),
+      level1SubdeckName: findLevel1SubdeckName(card.deck_id),
+    }));
 
   const reviewCount = cardsToReview.length;
   const [showSession, setShowSession] = useState(false);
