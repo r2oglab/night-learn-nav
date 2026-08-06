@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Loader2, ClipboardPaste } from "lucide-react";
+import { Plus, Loader2, ClipboardPaste, Maximize2 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { createCard, createImageOcclusionCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
+import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 
 export const Route = createFileRoute("/_authenticated/criacao")({
   component: CriacaoPage,
@@ -21,7 +22,6 @@ export const Route = createFileRoute("/_authenticated/criacao")({
 
 type CardType = "simples" | "invertido" | "cloze" | "oclusao";
 
-type RegionDraft = { id: string; x: number; y: number; width: number; height: number; label: string };
 type DrawingRect = { startX: number; startY: number; x: number; y: number; width: number; height: number };
 
 function CriacaoPage() {
@@ -43,6 +43,7 @@ function CriacaoPage() {
   const [regions, setRegions] = useState<RegionDraft[]>([]);
   const [drawing, setDrawing] = useState<DrawingRect | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const imageAreaRef = useRef<HTMLDivElement>(null);
 
   const create = useMutation({
@@ -205,6 +206,22 @@ function CriacaoPage() {
 
           <main className="flex flex-1 justify-center p-6">
             <div className="w-full max-w-3xl">
+              {editorOpen && occlusionImageUrl && (
+                <ImageOcclusionEditor
+                  imageUrl={occlusionImageUrl}
+                  regions={regions}
+                  onClose={() => setEditorOpen(false)}
+                  onApply={({ file, regions: newRegions }) => {
+                    if (file) {
+                      setOcclusionFile(file);
+                      setOcclusionImageUrl(URL.createObjectURL(file));
+                    }
+                    setRegions(newRegions);
+                    setEditorOpen(false);
+                  }}
+                />
+              )}
+
               <form
                 className="mb-6 grid gap-3"
                 onSubmit={async (event) => {
@@ -275,17 +292,26 @@ function CriacaoPage() {
                       <>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>Clique e arraste na imagem para marcar uma área. {regions.length} área(s) marcada(s).</span>
-                          <button
-                            type="button"
-                            className="text-muted-foreground underline hover:text-foreground"
-                            onClick={() => {
-                              setOcclusionFile(null);
-                              setOcclusionImageUrl(null);
-                              setRegions([]);
-                            }}
-                          >
-                            Trocar imagem
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              className="flex items-center gap-1 text-muted-foreground underline hover:text-foreground"
+                              onClick={() => setEditorOpen(true)}
+                            >
+                              <Maximize2 className="size-3.5" /> Maximizar
+                            </button>
+                            <button
+                              type="button"
+                              className="text-muted-foreground underline hover:text-foreground"
+                              onClick={() => {
+                                setOcclusionFile(null);
+                                setOcclusionImageUrl(null);
+                                setRegions([]);
+                              }}
+                            >
+                              Trocar imagem
+                            </button>
+                          </div>
                         </div>
                         <div
                           ref={imageAreaRef}
