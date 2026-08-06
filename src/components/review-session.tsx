@@ -19,6 +19,12 @@ type Card = {
 
 type DeckTally = { correct: number; incorrect: number };
 
+// Sentinel key for cards attached directly to the root deck, with no
+// first-level subdeck. Rendered as its own bar so the subdeck breakdown
+// always adds up to the deck's total — otherwise those cards would count
+// toward the header total but never show up anywhere in the list below.
+const DIRECT_ON_ROOT = "__direct__";
+
 export function ReviewSession({
   cards,
   onExit,
@@ -69,23 +75,21 @@ export function ReviewSession({
         };
       });
 
-      const subdeckName = current.level1SubdeckName;
-      if (subdeckName) {
-        setSubdeckTally((prev) => {
-          const root = prev[deckName] ?? {};
-          const entry = root[subdeckName] ?? { correct: 0, incorrect: 0 };
-          return {
-            ...prev,
-            [deckName]: {
-              ...root,
-              [subdeckName]: {
-                correct: entry.correct + (isCorrect ? 1 : 0),
-                incorrect: entry.incorrect + (isCorrect ? 0 : 1),
-              },
+      const subdeckName = current.level1SubdeckName ?? DIRECT_ON_ROOT;
+      setSubdeckTally((prev) => {
+        const root = prev[deckName] ?? {};
+        const entry = root[subdeckName] ?? { correct: 0, incorrect: 0 };
+        return {
+          ...prev,
+          [deckName]: {
+            ...root,
+            [subdeckName]: {
+              correct: entry.correct + (isCorrect ? 1 : 0),
+              incorrect: entry.incorrect + (isCorrect ? 0 : 1),
             },
-          };
-        });
-      }
+          },
+        };
+      });
 
       setRevealed(false);
       const next = index + 1;
@@ -134,10 +138,13 @@ export function ReviewSession({
               const total = correct + incorrect;
               const correctDash = total > 0 ? (correct / total) * circumference : 0;
               const subdecks = subdeckTally[name] ?? {};
-              const subdeckNames = Object.keys(subdecks).sort(
-                (a, b) =>
-                  subdecks[b].correct + subdecks[b].incorrect - (subdecks[a].correct + subdecks[a].incorrect),
-              );
+              const subdeckNames = Object.keys(subdecks).sort((a, b) => {
+                // Keep "direto no deck" last regardless of its count — it's
+                // the leftover bucket, not a real subdeck to rank.
+                if (a === DIRECT_ON_ROOT) return 1;
+                if (b === DIRECT_ON_ROOT) return -1;
+                return subdecks[b].correct + subdecks[b].incorrect - (subdecks[a].correct + subdecks[a].incorrect);
+              });
               return (
                 <div key={name} className="flex items-start gap-4 rounded-xl border border-border p-4">
                   <svg width={70} height={70} viewBox="0 0 80 80" className="shrink-0">
@@ -183,8 +190,8 @@ export function ReviewSession({
                           const pct = stotal > 0 ? Math.round((sc / stotal) * 100) : 0;
                           return (
                             <div key={subName} className="flex items-center gap-2 text-xs">
-                              <span className="w-28 shrink-0 truncate text-muted-foreground" title={subName}>
-                                {subName}
+                              <span className="w-28 shrink-0 truncate text-muted-foreground" title={subName === DIRECT_ON_ROOT ? "(direto no deck)" : subName}>
+                                {subName === DIRECT_ON_ROOT ? "(direto no deck)" : subName}
                               </span>
                               <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
                                 <div
