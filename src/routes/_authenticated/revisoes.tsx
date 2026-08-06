@@ -9,6 +9,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { listCards } from "@/lib/cards.functions";
 import { listDecks } from "@/lib/decks.functions";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,8 @@ function daysUntil(due: string) {
   return Math.round((target.getTime() - today.getTime()) / 86400000);
 }
 
+const ALL_THEMES = "__all__";
+
 function RevisoesPage() {
   const fetchDecks = useServerFn(listDecks);
   const fetchCards = useServerFn(listCards);
@@ -64,6 +67,7 @@ function RevisoesPage() {
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
+  const todayISO = `${todayStart.getFullYear()}-${String(todayStart.getMonth() + 1).padStart(2, "0")}-${String(todayStart.getDate()).padStart(2, "0")}`;
 
   const cardsToReview = cards.filter((card) => {
     try {
@@ -97,6 +101,58 @@ function RevisoesPage() {
     group.push(card);
     groupsByRootDeck.set(rootName, group);
   }
+
+  // Per-theme done/overdue/pending, for the theme donut.
+  // "done" = reviewed today (last_review falls on today), regardless of
+  // where its (already-advanced) due date landed after FSRS recalculated it.
+  // "overdue"/"pending" only apply to cards still awaiting review today.
+  type ThemeStats = { done: number; overdue: number; pending: number };
+  const statsByRootDeck: Record<string, ThemeStats> = {};
+  function bump(rootName: string, key: keyof ThemeStats) {
+    const s = statsByRootDeck[rootName] ?? { done: 0, overdue: 0, pending: 0 };
+    s[key] += 1;
+    statsByRootDeck[rootName] = s;
+  }
+  for (const card of cards) {
+    const rootName = findRootDeckName(card.deck_id);
+    const reviewedToday = card.last_review?.slice(0, 10) === todayISO;
+    if (reviewedToday) {
+      bump(rootName, "done");
+      continue;
+    }
+    const dueDate = new Date(`${card.due}T00:00:00`);
+    if (dueDate.getTime() === todayStart.getTime()) bump(rootName, "pending");
+    else if (dueDate < todayStart) bump(rootName, "overdue");
+  }
+
+  const themeNames = Object.keys(statsByRootDeck).sort(
+    (a, b) =>
+      statsByRootDeck[b].done + statsByRootDeck[b].overdue + statsByRootDeck[b].pending -
+      (statsByRootDeck[a].done + statsByRootDeck[a].overdue + statsByRootDeck[a].pending),
+  );
+
+  const [selectedTheme, setSelectedTheme] = useState<string>(ALL_THEMES);
+
+  const donutStats: ThemeStats =
+    selectedTheme === ALL_THEMES
+      ? themeNames.reduce(
+          (acc, name) => ({
+            done: acc.done + statsByRootDeck[name].done,
+            overdue: acc.overdue + statsByRootDeck[name].overdue,
+            pending: acc.pending + statsByRootDeck[name].pending,
+          }),
+          { done: 0, overdue: 0, pending: 0 },
+        )
+      : statsByRootDeck[selectedTheme] ?? { done: 0, overdue: 0, pending: 0 };
+
+  const donutTotal = donutStats.done + donutStats.overdue + donutStats.pending;
+  const donutR = 36;
+  const donutCircumference = 2 * Math.PI * donutR;
+  const donutSegments = [
+    { value: donutStats.done, color: "#10B981" },
+    { value: donutStats.overdue, color: "#F97316" },
+    { value: donutStats.pending, color: "#F59E0B" },
+  ];
 
   return (
     <SidebarProvider>
@@ -139,10 +195,6 @@ function RevisoesPage() {
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : reviewCount === 0 ? (
-                <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-                  Nenhum card para revisar hoje.
-                </p>
               ) : (
                 <>
                   {showSession && (
@@ -157,44 +209,107 @@ function RevisoesPage() {
                       </div>
                     </>
                   )}
-                  <div className="mb-4 text-sm text-muted-foreground">{reviewCount} cards para revisar hoje</div>
-                  <div className="space-y-6">
-                    {Array.from(groupsByRootDeck.entries()).map(([rootName, groupCards]) => (
-                      <div key={rootName}>
-                        <h3 className="mb-2 text-sm font-semibold">{rootName}</h3>
-                        <ul className="space-y-3">
-                          {groupCards.map((card) => {
-                            const diff = daysUntil(card.due);
-                            return (
-                              <li key={card.id} className="rounded-xl border border-border bg-card p-4">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <p className="font-medium">{card.pergunta}</p>
-                                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-                                    {deckMap[card.deck_id] ?? "Deck desconhecido"}
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      "flex items-center gap-1.5 text-xs",
-                                      diff < 0 ? "text-overdue" : "text-muted-foreground",
-                                    )}
-                                  >
-                                    <CalendarClock className="size-3.5" />
-                                    {dateFormatter.format(new Date(`${card.due}T00:00:00`))}
-                                    {" · "}
-                                    {diff === 0
-                                      ? "hoje"
-                                      : diff > 0
-                                        ? `em ${diff} dia(s)`
-                                        : `atrasado ${Math.abs(diff)} dia(s)`}
-                                  </span>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ul>
+
+                  {themeNames.length > 0 && (
+                    <div className="mb-6 flex items-center gap-4 rounded-xl border border-border bg-card p-4">
+                      <svg width={90} height={90} viewBox="0 0 100 100" className="shrink-0">
+                        <circle cx={50} cy={50} r={donutR} fill="none" stroke="hsl(var(--muted))" strokeWidth={14} />
+                        {(() => {
+                          let offset = 0;
+                          return (
+                            donutTotal > 0 &&
+                            donutSegments.map((seg, i) => {
+                              if (seg.value === 0) return null;
+                              const dash = (seg.value / donutTotal) * donutCircumference;
+                              const el = (
+                                <circle
+                                  key={i}
+                                  cx={50}
+                                  cy={50}
+                                  r={donutR}
+                                  fill="none"
+                                  stroke={seg.color}
+                                  strokeWidth={14}
+                                  strokeDasharray={`${dash} ${donutCircumference - dash}`}
+                                  strokeDashoffset={-offset}
+                                  transform="rotate(-90 50 50)"
+                                />
+                              );
+                              offset += dash;
+                              return el;
+                            })
+                          );
+                        })()}
+                      </svg>
+
+                      <div className="flex flex-1 flex-col gap-2">
+                        <Select value={selectedTheme} onValueChange={setSelectedTheme}>
+                          <SelectTrigger className="w-full max-w-xs">
+                            <SelectValue placeholder="Tema" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={ALL_THEMES}>Todos os temas</SelectItem>
+                            {themeNames.map((name) => (
+                              <SelectItem key={name} value={name}>
+                                {name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="text-xs text-muted-foreground">
+                          {donutStats.done}/{donutTotal} revisados hoje
+                          {donutStats.overdue > 0 && ` · ${donutStats.overdue} atrasado(s)`}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+                  {reviewCount === 0 ? (
+                    <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+                      Nenhum card para revisar hoje.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mb-4 text-sm text-muted-foreground">{reviewCount} cards para revisar hoje</div>
+                      <div className="space-y-6">
+                        {Array.from(groupsByRootDeck.entries()).map(([rootName, groupCards]) => (
+                          <div key={rootName}>
+                            <h3 className="mb-2 text-sm font-semibold">{rootName}</h3>
+                            <ul className="space-y-3">
+                              {groupCards.map((card) => {
+                                const diff = daysUntil(card.due);
+                                return (
+                                  <li key={card.id} className="rounded-xl border border-border bg-card p-4">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                      <p className="font-medium">{card.pergunta}</p>
+                                      <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                                        {deckMap[card.deck_id] ?? "Deck desconhecido"}
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          "flex items-center gap-1.5 text-xs",
+                                          diff < 0 ? "text-overdue" : "text-muted-foreground",
+                                        )}
+                                      >
+                                        <CalendarClock className="size-3.5" />
+                                        {dateFormatter.format(new Date(`${card.due}T00:00:00`))}
+                                        {" · "}
+                                        {diff === 0
+                                          ? "hoje"
+                                          : diff > 0
+                                            ? `em ${diff} dia(s)`
+                                            : `atrasado ${Math.abs(diff)} dia(s)`}
+                                      </span>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
