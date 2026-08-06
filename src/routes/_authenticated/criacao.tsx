@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, ClipboardPaste } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -79,37 +79,73 @@ function CriacaoPage() {
     }
   }
 
-  function getRelativePos(e: React.MouseEvent): { x: number; y: number } {
+  function getRelativePos(clientX: number, clientY: number): { x: number; y: number } {
     const rect = imageAreaRef.current!.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
     return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
   }
 
   function handleMouseDown(e: React.MouseEvent) {
-    const { x, y } = getRelativePos(e);
+    const { x, y } = getRelativePos(e.clientX, e.clientY);
     setDrawing({ startX: x, startY: y, x, y, width: 0, height: 0 });
   }
 
-  function handleMouseMove(e: React.MouseEvent) {
-    if (!drawing) return;
-    const { x, y } = getRelativePos(e);
-    const newX = Math.min(x, drawing.startX);
-    const newY = Math.min(y, drawing.startY);
-    const width = Math.abs(x - drawing.startX);
-    const height = Math.abs(y - drawing.startY);
-    setDrawing({ ...drawing, x: newX, y: newY, width, height });
-  }
-
-  function handleMouseUp() {
-    if (!drawing) return;
-    if (drawing.width > 1 && drawing.height > 1) {
-      setRegions((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), x: drawing.x, y: drawing.y, width: drawing.width, height: drawing.height, label: "" },
-      ]);
+  // Track the drag on the window, not just the image element: once the
+  // cursor leaves the small image area, plain onMouseMove/onMouseLeave on
+  // the container stop firing and the drag used to get cancelled outright.
+  // Listening on window keeps the drag alive; getRelativePos already
+  // clamps to 0–100%, so the rectangle just stops growing at the edge
+  // instead of losing the selection.
+  const isDrawing = drawing !== null;
+  useEffect(() => {
+    if (!isDrawing) return;
+    function handleWindowMouseMove(e: MouseEvent) {
+      const { x, y } = getRelativePos(e.clientX, e.clientY);
+      setDrawing((prev) => {
+        if (!prev) return prev;
+        const newX = Math.min(x, prev.startX);
+        const newY = Math.min(y, prev.startY);
+        const width = Math.abs(x - prev.startX);
+        const height = Math.abs(y - prev.startY);
+        return { ...prev, x: newX, y: newY, width, height };
+      });
     }
-    setDrawing(null);
+    function handleWindowMouseUp() {
+      setDrawing((prev) => {
+        if (prev && prev.width > 1 && prev.height > 1) {
+          setRegions((r) => [
+            ...r,
+            { id: crypto.randomUUID(), x: prev.x, y: prev.y, width: prev.width, height: prev.height, label: "" },
+          ]);
+        }
+        return null;
+      });
+    }
+    window.addEventListener("mousemove", handleWindowMouseMove);
+    window.addEventListener("mouseup", handleWindowMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+    };
+  }, [isDrawing]);
+
+  async function handlePasteButtonClick() {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith("image/"));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], `colado.${imageType.split("/")[1] || "png"}`, { type: imageType });
+          loadImageFile(file);
+          return;
+        }
+      }
+      toast.error("Nenhuma imagem encontrada na área de transferência.");
+    } catch {
+      toast.error("Não foi possível acessar a área de transferência. Tente Ctrl+V na área acima.");
+    }
   }
 
   async function handleOcclusionSubmit(deck: string) {
@@ -255,9 +291,6 @@ function CriacaoPage() {
                           ref={imageAreaRef}
                           className="relative w-full max-w-xl cursor-crosshair select-none overflow-hidden rounded-lg border border-border"
                           onMouseDown={handleMouseDown}
-                          onMouseMove={handleMouseMove}
-                          onMouseUp={handleMouseUp}
-                          onMouseLeave={() => setDrawing(null)}
                         >
                           <img src={occlusionImageUrl} alt="" className="pointer-events-none block w-full" draggable={false} />
                           {regions.map((r) => (
@@ -323,6 +356,13 @@ function CriacaoPage() {
                       />
                     </label>
                   </div>
+                )}
+
+                {cardType === "oclusao" && (
+                  <Button type="button" variant="outline" onClick={() => void handlePasteButtonClick()}>
+                    <ClipboardPaste className="size-4" />
+                    Colar Imagem da Área de Transferência
+                  </Button>
                 )}
 
                 <Button

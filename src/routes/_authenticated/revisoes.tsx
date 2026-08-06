@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { listCards } from "@/lib/cards.functions";
 import { listDecks } from "@/lib/decks.functions";
-import { cn } from "@/lib/utils";
+import { capitalizeFirst, cn } from "@/lib/utils";
 import ReviewSession from "@/components/review-session";
 
 export const Route = createFileRoute("/_authenticated/revisoes")({
@@ -200,7 +200,7 @@ function RevisoesPage() {
                                     )}
                                   >
                                     <CalendarClock className="size-3.5" />
-                                    {dateFormatter.format(new Date(`${card.due}T00:00:00`))}
+                                    {capitalizeFirst(dateFormatter.format(new Date(`${card.due}T00:00:00`)))}
                                     {" · "}
                                     {diff === 0
                                       ? "hoje"

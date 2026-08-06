@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
-import { cn } from "@/lib/utils";
+import { capitalizeFirst, cn } from "@/lib/utils";
 import { listDecks } from "@/lib/decks.functions";
 import { getHeatmapData } from "@/lib/cards.functions";
 
@@ -68,7 +68,7 @@ function Index() {
   const dateReady = realNow !== null && viewYear !== null && viewMonth !== null;
 
   const monthLabel = dateReady
-    ? new Date(viewYear!, viewMonth!, 1).toLocaleString("pt-BR", { month: "long", year: "numeric" })
+    ? capitalizeFirst(new Date(viewYear!, viewMonth!, 1).toLocaleString("pt-BR", { month: "long", year: "numeric" }))
     : "";
   const daysInMonth = dateReady ? new Date(viewYear!, viewMonth! + 1, 0).getDate() : 0;
   const firstWeekday = dateReady ? new Date(viewYear!, viewMonth!, 1).getDay() : 0;

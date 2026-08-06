@@ -275,7 +275,7 @@ export function ReviewSession({
                     return (
                       <div
                         key={region.id}
-                        className={`absolute border-2 ${isTarget ? "border-primary" : "border-amber-600"} bg-amber-400`}
+                        className={`absolute border-2 ${isTarget ? "border-sky-600 bg-sky-500" : "border-amber-600 bg-amber-400"}`}
                         style={{ left: `${region.x}%`, top: `${region.y}%`, width: `${region.width}%`, height: `${region.height}%` }}
                       />
                     );
