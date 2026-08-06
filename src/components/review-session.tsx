@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { X, Play } from "lucide-react";
@@ -104,6 +104,25 @@ export function ReviewSession({
     }
   }
 
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (finished || loading || !current) return;
+      if (!revealed) {
+        if (e.code === "Space" || e.key === "Enter") {
+          e.preventDefault();
+          setRevealed(true);
+        }
+        return;
+      }
+      if (e.key === "1") { e.preventDefault(); void handleRating(Rating.Again); }
+      else if (e.key === "2") { e.preventDefault(); void handleRating(Rating.Hard); }
+      else if (e.key === "3") { e.preventDefault(); void handleRating(Rating.Good); }
+      else if (e.key === "4") { e.preventDefault(); void handleRating(Rating.Easy); }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [revealed, loading, finished, current]);
+
   if (!sessionCards || sessionCards.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background">
@@ -190,8 +209,8 @@ export function ReviewSession({
                           const pct = stotal > 0 ? Math.round((sc / stotal) * 100) : 0;
                           return (
                             <div key={subName} className="flex items-center gap-2 text-xs">
-                              <span className="w-28 shrink-0 truncate text-muted-foreground" title={subName === DIRECT_ON_ROOT ? "(direto no deck)" : subName}>
-                                {subName === DIRECT_ON_ROOT ? "(direto no deck)" : subName}
+                              <span className="w-28 shrink-0 truncate text-muted-foreground" title={subName === DIRECT_ON_ROOT ? name : subName}>
+                                {subName === DIRECT_ON_ROOT ? name : subName}
                               </span>
                               <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
                                 <div
