@@ -198,3 +198,39 @@ export const updateCard = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return updated;
   });
+
+type OcclusionRegion = { id: string; x: number; y: number; width: number; height: number; label?: string };
+
+export const createImageOcclusionCards = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { deck_id: string; image_url: string; regions: OcclusionRegion[] }) => {
+    const deckId = input.deck_id?.trim();
+    const imageUrl = input.image_url?.trim();
+    if (!deckId) throw new Error("Informe o deck.");
+    if (!imageUrl) throw new Error("Envie uma imagem.");
+    if (!input.regions || input.regions.length === 0) throw new Error("Desenhe pelo menos uma área de oclusão.");
+    return { deck_id: deckId, image_url: imageUrl, regions: input.regions };
+  })
+  .handler(async ({ data, context }) => {
+    // "Hide all, guess one": every card generated from this image carries
+    // the full regions array (so all masks render on the front), but each
+    // card's own occlusion_target_id says which single mask gets lifted
+    // once that specific card is revealed.
+    const inserts = data.regions.map((region) => ({
+      user_id: context.userId,
+      deck_id: data.deck_id,
+      pergunta: region.label ? `[Oclusão] ${region.label}` : "[Oclusão de imagem]",
+      resposta: region.label ?? "",
+      image_url: data.image_url,
+      occlusion_regions: data.regions,
+      occlusion_target_id: region.id,
+      ...newCardFields(),
+    }));
+
+    const { data: rows, error } = await context.supabase
+      .from("cards")
+      .insert(inserts)
+      .select("*");
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });

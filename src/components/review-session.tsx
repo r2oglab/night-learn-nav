@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { reviewCard } from "@/lib/cards.functions";
 
+type OcclusionRegion = { id: string; x: number; y: number; width: number; height: number; label?: string };
+
 type Card = {
   id: string;
   pergunta: string;
@@ -15,6 +17,9 @@ type Card = {
   due?: string;
   rootDeckName?: string;
   level1SubdeckName?: string | null;
+  image_url?: string | null;
+  occlusion_regions?: OcclusionRegion[] | null;
+  occlusion_target_id?: string | null;
 };
 
 type DeckTally = { correct: number; incorrect: number };
@@ -259,14 +264,42 @@ export function ReviewSession({
           </div>
 
           <div className="rounded-lg border border-border p-6">
-            <div className="mb-4 text-sm text-muted-foreground">Pergunta</div>
-            <div className="text-base">{maskedQuestion}</div>
-
-            {revealed && (
-              <div className="mt-6">
-                <div className="mb-2 text-sm text-muted-foreground">Resposta</div>
-                <div className="text-base">{isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}</div>
+            {current?.image_url ? (
+              <div className="mx-auto max-w-xl">
+                <div className="relative w-full overflow-hidden rounded-lg">
+                  <img src={current.image_url} alt="" className="block w-full" />
+                  {(current.occlusion_regions ?? []).map((region) => {
+                    const isTarget = region.id === current.occlusion_target_id;
+                    const stillHidden = !(revealed && isTarget);
+                    if (!stillHidden) return null;
+                    return (
+                      <div
+                        key={region.id}
+                        className={`absolute border-2 ${isTarget ? "border-primary" : "border-amber-600"} bg-amber-400`}
+                        style={{ left: `${region.x}%`, top: `${region.y}%`, width: `${region.width}%`, height: `${region.height}%` }}
+                      />
+                    );
+                  })}
+                </div>
+                {revealed && current.resposta && (
+                  <div className="mt-4">
+                    <div className="mb-1 text-sm text-muted-foreground">Resposta</div>
+                    <div className="text-base">{current.resposta}</div>
+                  </div>
+                )}
               </div>
+            ) : (
+              <>
+                <div className="mb-4 text-sm text-muted-foreground">Pergunta</div>
+                <div className="text-base">{maskedQuestion}</div>
+
+                {revealed && (
+                  <div className="mt-6">
+                    <div className="mb-2 text-sm text-muted-foreground">Resposta</div>
+                    <div className="text-base">{isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}</div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
