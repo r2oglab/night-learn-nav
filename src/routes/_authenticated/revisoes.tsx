@@ -112,10 +112,7 @@ function RevisoesPage() {
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-5" />
             <h1 className="text-sm font-medium">Revisões</h1>
-            <span className="ml-auto text-xs text-muted-foreground">
-              Cards individuais com FSRS
-            </span>
-            <div className="ml-3">
+            <div className="ml-auto">
               <Button
                 variant="ghost"
                 onClick={() => {

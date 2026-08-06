@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Plus, Loader2 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -18,6 +18,8 @@ export const Route = createFileRoute("/_authenticated/criacao")({
   component: CriacaoPage,
 });
 
+type CardType = "simples" | "invertido" | "cloze";
+
 function CriacaoPage() {
   const queryClient = useQueryClient();
   const addCard = useServerFn(createCard);
@@ -26,8 +28,9 @@ function CriacaoPage() {
   const [deckPath, setDeckPath] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
-  const [invert, setInvert] = useState(false);
-  const [cloze, setCloze] = useState(false);
+  const [cardType, setCardType] = useState<CardType>("simples");
+  const invert = cardType === "invertido";
+  const cloze = cardType === "cloze";
 
   const create = useMutation({
     mutationFn: (vars: { deck_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) =>
@@ -99,17 +102,24 @@ function CriacaoPage() {
                     placeholder="Escreva a resposta do card"
                   />
                 </label>
-                <div className="flex items-center gap-4">
+                <RadioGroup
+                  value={cardType}
+                  onValueChange={(v) => setCardType(v as CardType)}
+                  className="flex items-center gap-4"
+                >
                   <label className="flex items-center gap-2 text-sm">
-                    <Checkbox checked={invert} onCheckedChange={(v) => setInvert(!!v)} />
+                    <RadioGroupItem value="simples" />
+                    <span className="text-muted-foreground">Simples</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <RadioGroupItem value="invertido" />
                     <span className="text-muted-foreground">Cartão invertido</span>
                   </label>
-
                   <label className="flex items-center gap-2 text-sm">
-                    <Checkbox checked={cloze} onCheckedChange={(v) => setCloze(!!v)} />
+                    <RadioGroupItem value="cloze" />
                     <span className="text-muted-foreground">Omissão de palavra (cloze)</span>
                   </label>
-                </div>
+                </RadioGroup>
 
                 <Button
                   type="submit"

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Trash, Loader2, Edit3, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -147,21 +147,27 @@ function FlashcardsPage() {
             <>
               <h3 className="text-sm font-medium">{deck.name}</h3>
               <span className="text-xs text-muted-foreground">{totalCardCount} card(s)</span>
-              <div className="ml-auto flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => {
-                  setEditingDeckId(deck.id);
-                  setEditingDeckName(deck.name);
-                }}>
+              <div className="ml-auto flex items-center gap-3 text-xs">
+                <button
+                  className="text-muted-foreground underline hover:text-foreground"
+                  onClick={() => {
+                    setEditingDeckId(deck.id);
+                    setEditingDeckName(deck.name);
+                  }}
+                >
                   Editar
-                </Button>
-                <Button size="sm" variant="destructive" onClick={() => {
-                  const deckIds = new Set(collectDeckIds(deck.id));
-                  const count = cards.filter((c: any) => deckIds.has(c.deck_id)).length;
-                  const ok = window.confirm(`Excluir deck "${deck.name}"? Isso também removerá ${count} card(s) deste deck.`);
-                  if (ok) removeDeck.mutate(deck.id);
-                }}>
+                </button>
+                <button
+                  className="text-destructive underline hover:text-destructive/80"
+                  onClick={() => {
+                    const deckIds = new Set(collectDeckIds(deck.id));
+                    const count = cards.filter((c: any) => deckIds.has(c.deck_id)).length;
+                    const ok = window.confirm(`Excluir deck "${deck.name}"? Isso também removerá ${count} card(s) deste deck.`);
+                    if (ok) removeDeck.mutate(deck.id);
+                  }}
+                >
                   Excluir deck
-                </Button>
+                </button>
               </div>
             </>
           )}
@@ -195,17 +201,27 @@ function FlashcardsPage() {
                         <p className="text-sm text-muted-foreground">{card.resposta}</p>
                         <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={() => {
-                          setEditingId(card.id);
-                          setEditingQuestion(card.pergunta);
-                          setEditingAnswer(card.resposta);
-                        }}>
-                          <Edit3 className="size-4" /> Editar
-                        </Button>
-                        <Button size="sm" variant="destructive" disabled={delMutation.isPending} onClick={() => delMutation.mutate(card.id)}>
-                          <Trash className="size-4" /> Excluir
-                        </Button>
+                      <div className="flex items-center gap-3 text-xs">
+                        <button
+                          className="text-muted-foreground underline hover:text-foreground"
+                          onClick={() => {
+                            setEditingId(card.id);
+                            setEditingQuestion(card.pergunta);
+                            setEditingAnswer(card.resposta);
+                          }}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          className="text-destructive underline hover:text-destructive/80 disabled:opacity-50"
+                          disabled={delMutation.isPending}
+                          onClick={() => {
+                            const ok = window.confirm(`Excluir o card "${card.pergunta}"?`);
+                            if (ok) delMutation.mutate(card.id);
+                          }}
+                        >
+                          Excluir
+                        </button>
                       </div>
                     </>
                   )}
@@ -238,7 +254,6 @@ function FlashcardsPage() {
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-5" />
             <h1 className="text-sm font-medium">Flashcards</h1>
-            <span className="ml-auto text-xs text-muted-foreground">Listagem por deck</span>
           </header>
 
           <main className="flex flex-1 justify-center p-6">
