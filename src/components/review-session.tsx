@@ -13,7 +13,10 @@ type Card = {
   pergunta: string;
   resposta: string;
   due?: string;
+  rootDeckName?: string;
 };
+
+type DeckTally = { correct: number; incorrect: number };
 
 export function ReviewSession({
   cards,
@@ -27,6 +30,8 @@ export function ReviewSession({
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const [tally, setTally] = useState<Record<string, DeckTally>>({});
   const grade = useServerFn(reviewCard);
   const qc = useQueryClient();
 
@@ -43,13 +48,25 @@ export function ReviewSession({
       await grade({ data: { id: current.id, rating } });
       void qc.invalidateQueries({ queryKey: ["cards"] });
       void qc.invalidateQueries({ queryKey: ["decks"] });
+
+      const isCorrect = rating !== Rating.Again;
+      const deckName = current.rootDeckName ?? "(sem deck)";
+      setTally((prev) => {
+        const entry = prev[deckName] ?? { correct: 0, incorrect: 0 };
+        return {
+          ...prev,
+          [deckName]: {
+            correct: entry.correct + (isCorrect ? 1 : 0),
+            incorrect: entry.incorrect + (isCorrect ? 0 : 1),
+          },
+        };
+      });
+
       setRevealed(false);
       const next = index + 1;
+      setIndex(next);
       if (next >= cards.length) {
-        toast.success("Fila finalizada");
-        onComplete?.();
-      } else {
-        setIndex(next);
+        setFinished(true);
       }
     } catch (err: any) {
       toast.error(err?.message ?? String(err));
@@ -69,12 +86,71 @@ export function ReviewSession({
     );
   }
 
-  if (index >= cards.length) {
+  if (finished) {
+    const deckNames = Object.keys(tally).sort(
+      (a, b) => tally[b].correct + tally[b].incorrect - (tally[a].correct + tally[a].incorrect),
+    );
+    const totalCorrect = deckNames.reduce((sum, name) => sum + tally[name].correct, 0);
+    const totalCards = deckNames.reduce((sum, name) => sum + tally[name].correct + tally[name].incorrect, 0);
+    const r = 32;
+    const circumference = 2 * Math.PI * r;
+
     return (
-      <div className="flex h-full w-full items-center justify-center bg-background">
-        <div className="text-center">
-          <h2 className="mb-4 text-xl font-semibold">Tudo revisado</h2>
-          <Button onClick={onExit}>Voltar</Button>
+      <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-4">
+        <div className="w-full max-w-2xl rounded-lg bg-card p-6 shadow-lg">
+          <h2 className="text-lg font-semibold">Sessão finalizada</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {totalCorrect}/{totalCards} acertos no total
+          </p>
+
+          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {deckNames.map((name) => {
+              const { correct, incorrect } = tally[name];
+              const total = correct + incorrect;
+              const correctDash = total > 0 ? (correct / total) * circumference : 0;
+              return (
+                <div
+                  key={name}
+                  className="flex flex-col items-center gap-2 rounded-xl border border-border p-4 text-center"
+                >
+                  <svg width={80} height={80} viewBox="0 0 80 80">
+                    <circle cx={40} cy={40} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={12} />
+                    {correct > 0 && (
+                      <circle
+                        cx={40}
+                        cy={40}
+                        r={r}
+                        fill="none"
+                        stroke="#10B981"
+                        strokeWidth={12}
+                        strokeDasharray={`${correctDash} ${circumference - correctDash}`}
+                        transform="rotate(-90 40 40)"
+                      />
+                    )}
+                    {incorrect > 0 && (
+                      <circle
+                        cx={40}
+                        cy={40}
+                        r={r}
+                        fill="none"
+                        stroke="#EF4444"
+                        strokeWidth={12}
+                        strokeDasharray={`${circumference - correctDash} ${correctDash}`}
+                        strokeDashoffset={-correctDash}
+                        transform="rotate(-90 40 40)"
+                      />
+                    )}
+                  </svg>
+                  <p className="text-sm font-medium">{name}</p>
+                  <p className="text-xs text-muted-foreground">{correct}/{total} acertos</p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <Button onClick={() => onComplete?.()}>Concluir</Button>
+          </div>
         </div>
       </div>
     );
