@@ -131,6 +131,15 @@ function RevisoesPage() {
 
           <main className="flex flex-1 justify-center p-6">
             <div className="w-full max-w-3xl">
+              {showSession && (
+                <div className="fixed inset-0 z-50">
+                  <ReviewSession
+                    cards={cardsToReview}
+                    onExit={() => setShowSession(false)}
+                    onComplete={() => setShowSession(false)}
+                  />
+                </div>
+              )}
               {decksLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -149,18 +158,6 @@ function RevisoesPage() {
                 </p>
               ) : (
                 <>
-                  {showSession && (
-                    <>
-                      {/* Render fullscreen review session */}
-                      <div className="fixed inset-0 z-50">
-                        <ReviewSession
-                          cards={cardsToReview}
-                          onExit={() => setShowSession(false)}
-                          onComplete={() => setShowSession(false)}
-                        />
-                      </div>
-                    </>
-                  )}
                   <div className="mb-4 text-sm text-muted-foreground">{reviewCount} cards para revisar hoje</div>
                   <div className="space-y-6">
                     {Array.from(groupsByRootDeck.entries()).map(([rootName, groupCards]) => (

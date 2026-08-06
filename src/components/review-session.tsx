@@ -32,10 +32,15 @@ export function ReviewSession({
   const [loading, setLoading] = useState(false);
   const [finished, setFinished] = useState(false);
   const [tally, setTally] = useState<Record<string, DeckTally>>({});
+  // Freeze the list once, at session start. The `cards` prop comes from a
+  // live query in the parent that gets invalidated after every rating (so
+  // the app-wide card list stays fresh), which would otherwise shrink out
+  // from under this component mid-session and desync `index`/length.
+  const [sessionCards] = useState(() => cards);
   const grade = useServerFn(reviewCard);
   const qc = useQueryClient();
 
-  const current = cards[index];
+  const current = sessionCards[index];
   const clozeMatch = current?.pergunta?.match(/\{\{c::(.*?)\}\}/);
   const isCloze = !!clozeMatch;
   const maskedQuestion = isCloze ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, '___') : (current?.pergunta ?? '');
@@ -65,7 +70,7 @@ export function ReviewSession({
       setRevealed(false);
       const next = index + 1;
       setIndex(next);
-      if (next >= cards.length) {
+      if (next >= sessionCards.length) {
         setFinished(true);
       }
     } catch (err: any) {
@@ -75,7 +80,7 @@ export function ReviewSession({
     }
   }
 
-  if (!cards || cards.length === 0) {
+  if (!sessionCards || sessionCards.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background">
         <div className="text-center">
@@ -171,7 +176,7 @@ export function ReviewSession({
           <div className="flex items-center gap-3">
             <Play className="size-6" />
             <h2 className="text-lg font-semibold">Sessão de Revisão</h2>
-            <div className="ml-auto text-sm text-muted-foreground">{index + 1}/{cards.length}</div>
+            <div className="ml-auto text-sm text-muted-foreground">{index + 1}/{sessionCards.length}</div>
           </div>
 
           <div className="rounded-lg border border-border p-6">
