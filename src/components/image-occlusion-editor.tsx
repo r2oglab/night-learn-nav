@@ -8,9 +8,23 @@ import { Input } from "@/components/ui/input";
 export type RegionDraft = { id: string; x: number; y: number; width: number; height: number; label: string };
 
 type Rect = { x: number; y: number; width: number; height: number };
-type DragRect = { startX: number; startY: number; x: number; y: number; width: number; height: number };
 type PendingText = { id: string; x: number; y: number; text: string };
 type Tool = "select" | "crop" | "text";
+
+// A single unified model for anything the user can drag on the canvas:
+// drawing a brand-new box, moving an existing box/text, or resizing an
+// existing box via its corner handle. Kept in a ref (not state) so the
+// window-level mousemove handler always reads the live anchor without
+// needing to be re-subscribed on every pixel of movement.
+type Interaction =
+  | { kind: "draw"; tool: "select" | "crop"; startX: number; startY: number }
+  | { kind: "move-region"; id: string; startX: number; startY: number; origX: number; origY: number }
+  | { kind: "resize-region"; id: string; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number }
+  | { kind: "move-crop"; startX: number; startY: number; origX: number; origY: number }
+  | { kind: "resize-crop"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number }
+  | { kind: "move-text"; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean };
+
+const MIN_SIZE = 1.5; // percent — smallest a box is allowed to shrink to
 
 export function ImageOcclusionEditor({
   imageUrl,
@@ -28,11 +42,18 @@ export function ImageOcclusionEditor({
   const [localRegions, setLocalRegions] = useState<RegionDraft[]>(regions);
   const [texts, setTexts] = useState<PendingText[]>([]);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
-  const [drag, setDrag] = useState<DragRect | null>(null);
+  const [drag, setDrag] = useState<Rect | null>(null); // live box while drawing/resizing
   const [cropRect, setCropRect] = useState<Rect | null>(null);
   const [imageChanged, setImageChanged] = useState(false);
+  const [active, setActive] = useState(false); // true whenever an interaction is in progress
+
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const interactionRef = useRef<Interaction | null>(null);
+  // A click just used to dismiss an in-progress text edit shouldn't also
+  // count as "place a new text" — this flag suppresses that one click.
+  const suppressNextTextClickRef = useRef(false);
 
   function getPos(clientX: number, clientY: number) {
     const rect = containerRef.current!.getBoundingClientRect();
@@ -41,56 +62,178 @@ export function ImageOcclusionEditor({
     return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
   }
 
-  function handleMouseDown(e: React.MouseEvent) {
-    if (tool === "text") return;
-    const { x, y } = getPos(e.clientX, e.clientY);
-    setDrag({ startX: x, startY: y, x, y, width: 0, height: 0 });
+  function beginInteraction(interaction: Interaction) {
+    interactionRef.current = interaction;
+    setActive(true);
   }
 
-  // Same window-level drag tracking as the inline editor, so dragging past
-  // the image edge clamps instead of cancelling the selection.
-  const isDragging = drag !== null;
+  // Single window-level listener pair for every kind of drag. Attaching on
+  // window (not just the small editing surface) means dragging past the
+  // image edge clamps at the border instead of losing the interaction.
   useEffect(() => {
-    if (!isDragging) return;
-    function move(e: MouseEvent) {
+    if (!active) return;
+
+    function handleMove(e: MouseEvent) {
+      const interaction = interactionRef.current;
+      if (!interaction) return;
       const { x, y } = getPos(e.clientX, e.clientY);
-      setDrag((prev) => {
-        if (!prev) return prev;
-        const newX = Math.min(x, prev.startX);
-        const newY = Math.min(y, prev.startY);
-        return { ...prev, x: newX, y: newY, width: Math.abs(x - prev.startX), height: Math.abs(y - prev.startY) };
-      });
+
+      if (interaction.kind === "draw") {
+        const newX = Math.min(x, interaction.startX);
+        const newY = Math.min(y, interaction.startY);
+        setDrag({ x: newX, y: newY, width: Math.abs(x - interaction.startX), height: Math.abs(y - interaction.startY) });
+      } else if (interaction.kind === "move-region") {
+        const dx = x - interaction.startX;
+        const dy = y - interaction.startY;
+        setLocalRegions((prev) =>
+          prev.map((r) => {
+            if (r.id !== interaction.id) return r;
+            const newX = Math.max(0, Math.min(100 - r.width, interaction.origX + dx));
+            const newY = Math.max(0, Math.min(100 - r.height, interaction.origY + dy));
+            return { ...r, x: newX, y: newY };
+          }),
+        );
+      } else if (interaction.kind === "resize-region") {
+        const newW = Math.max(MIN_SIZE, Math.min(100 - interaction.origX, interaction.origW + (x - interaction.startX)));
+        const newH = Math.max(MIN_SIZE, Math.min(100 - interaction.origY, interaction.origH + (y - interaction.startY)));
+        setLocalRegions((prev) => prev.map((r) => (r.id === interaction.id ? { ...r, width: newW, height: newH } : r)));
+      } else if (interaction.kind === "move-crop") {
+        const dx = x - interaction.startX;
+        const dy = y - interaction.startY;
+        setCropRect((prev) => {
+          if (!prev) return prev;
+          const newX = Math.max(0, Math.min(100 - prev.width, interaction.origX + dx));
+          const newY = Math.max(0, Math.min(100 - prev.height, interaction.origY + dy));
+          return { ...prev, x: newX, y: newY };
+        });
+      } else if (interaction.kind === "resize-crop") {
+        const newW = Math.max(MIN_SIZE, Math.min(100 - interaction.origX, interaction.origW + (x - interaction.startX)));
+        const newH = Math.max(MIN_SIZE, Math.min(100 - interaction.origY, interaction.origH + (y - interaction.startY)));
+        setCropRect((prev) => (prev ? { ...prev, width: newW, height: newH } : prev));
+      } else if (interaction.kind === "move-text") {
+        const dx = x - interaction.startX;
+        const dy = y - interaction.startY;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) interaction.moved = true;
+        const newX = Math.max(0, Math.min(100, interaction.origX + dx));
+        const newY = Math.max(0, Math.min(100, interaction.origY + dy));
+        setTexts((prev) => prev.map((t) => (t.id === interaction.id ? { ...t, x: newX, y: newY } : t)));
+      }
     }
-    function up() {
-      setDrag((prev) => {
-        if (prev && prev.width > 1 && prev.height > 1) {
-          if (tool === "select") {
-            setLocalRegions((r) => [
-              ...r,
-              { id: crypto.randomUUID(), x: prev.x, y: prev.y, width: prev.width, height: prev.height, label: "" },
-            ]);
-          } else if (tool === "crop") {
-            setCropRect({ x: prev.x, y: prev.y, width: prev.width, height: prev.height });
+
+    function handleUp() {
+      const interaction = interactionRef.current;
+      interactionRef.current = null;
+      setActive(false);
+
+      if (interaction?.kind === "draw") {
+        setDrag((finalDrag) => {
+          if (finalDrag && finalDrag.width > MIN_SIZE && finalDrag.height > MIN_SIZE) {
+            if (interaction.tool === "select") {
+              setLocalRegions((r) => [
+                ...r,
+                { id: crypto.randomUUID(), x: finalDrag.x, y: finalDrag.y, width: finalDrag.width, height: finalDrag.height, label: "" },
+              ]);
+            } else {
+              setCropRect({ x: finalDrag.x, y: finalDrag.y, width: finalDrag.width, height: finalDrag.height });
+            }
           }
-        }
-        return null;
-      });
+          return null;
+        });
+      } else if (interaction?.kind === "move-text" && !interaction.moved) {
+        // A plain click (no real drag) on a text label enters edit mode.
+        setEditingTextId(interaction.id);
+        suppressNextTextClickRef.current = true;
+      }
     }
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
     return () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
     };
-  }, [isDragging, tool]);
+  }, [active]);
+
+  function handleContainerMouseDown(e: React.MouseEvent) {
+    if (tool === "text" || active) return;
+    const { x, y } = getPos(e.clientX, e.clientY);
+    setDrag({ x, y, width: 0, height: 0 });
+    beginInteraction({ kind: "draw", tool, startX: x, startY: y });
+  }
 
   function handleContainerClick(e: React.MouseEvent) {
     if (tool !== "text") return;
+    if (suppressNextTextClickRef.current) {
+      suppressNextTextClickRef.current = false;
+      return;
+    }
     const { x, y } = getPos(e.clientX, e.clientY);
     const id = crypto.randomUUID();
     setTexts((t) => [...t, { id, x, y, text: "" }]);
     setEditingTextId(id);
   }
+
+  function finishEditingText(id: string) {
+    setTexts((prev) => {
+      const t = prev.find((x) => x.id === id);
+      if (t && t.text.trim() === "") return prev.filter((x) => x.id !== id);
+      return prev;
+    });
+    setEditingTextId(null);
+  }
+
+  function startRegionMove(e: React.MouseEvent, region: RegionDraft) {
+    e.stopPropagation();
+    if (tool !== "select") return;
+    beginInteraction({ kind: "move-region", id: region.id, startX: getPos(e.clientX, e.clientY).x, startY: getPos(e.clientX, e.clientY).y, origX: region.x, origY: region.y });
+  }
+
+  function startRegionResize(e: React.MouseEvent, region: RegionDraft) {
+    e.stopPropagation();
+    const { x, y } = getPos(e.clientX, e.clientY);
+    beginInteraction({ kind: "resize-region", id: region.id, startX: x, startY: y, origX: region.x, origY: region.y, origW: region.width, origH: region.height });
+  }
+
+  function startCropMove(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!cropRect) return;
+    const { x, y } = getPos(e.clientX, e.clientY);
+    beginInteraction({ kind: "move-crop", startX: x, startY: y, origX: cropRect.x, origY: cropRect.y });
+  }
+
+  function startCropResize(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!cropRect) return;
+    const { x, y } = getPos(e.clientX, e.clientY);
+    beginInteraction({ kind: "resize-crop", startX: x, startY: y, origX: cropRect.x, origY: cropRect.y, origW: cropRect.width, origH: cropRect.height });
+  }
+
+  function startTextDrag(e: React.MouseEvent, t: PendingText) {
+    e.stopPropagation();
+    const { x, y } = getPos(e.clientX, e.clientY);
+    beginInteraction({ kind: "move-text", id: t.id, startX: x, startY: y, origX: t.x, origY: t.y, moved: false });
+  }
+
+  // Live preview of the crop result, redrawn whenever the crop rectangle
+  // or working image changes.
+  useEffect(() => {
+    const canvas = previewCanvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img || !cropRect || tool !== "crop") return;
+    const sx = (cropRect.x / 100) * img.naturalWidth;
+    const sy = (cropRect.y / 100) * img.naturalHeight;
+    const sw = (cropRect.width / 100) * img.naturalWidth;
+    const sh = (cropRect.height / 100) * img.naturalHeight;
+    if (sw <= 0 || sh <= 0) return;
+    const maxDim = 160;
+    const scale = Math.min(maxDim / sw, maxDim / sh);
+    canvas.width = Math.max(1, sw * scale);
+    canvas.height = Math.max(1, sh * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  }, [cropRect, tool, workingUrl]);
 
   async function applyCrop() {
     if (!cropRect || !imgRef.current) return;
@@ -151,7 +294,7 @@ export function ImageOcclusionEditor({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col gap-3 overflow-y-auto rounded-lg bg-card p-6 shadow-lg">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col gap-3 overflow-y-auto rounded-lg bg-card p-6 shadow-lg">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Editor de imagem</h2>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -174,73 +317,104 @@ export function ImageOcclusionEditor({
               <Check className="size-4" /> Aplicar corte
             </Button>
           )}
+          <span className="text-xs text-muted-foreground">
+            {tool === "select" && "Arraste pra marcar. Arraste o centro de uma área pra mover, o canto pra redimensionar."}
+            {tool === "crop" && "Arraste pra selecionar o corte. Arraste o centro pra mover, o canto pra redimensionar."}
+            {tool === "text" && "Clique pra adicionar texto. Arraste um texto existente pra mover."}
+          </span>
         </div>
 
-        <div
-          ref={containerRef}
-          className="relative w-full select-none overflow-hidden rounded-lg border border-border"
-          style={{ cursor: tool === "text" ? "text" : "crosshair" }}
-          onMouseDown={handleMouseDown}
-          onClick={handleContainerClick}
-        >
-          <img ref={imgRef} src={workingUrl} alt="" className="pointer-events-none block w-full" draggable={false} />
-
-          {tool !== "crop" &&
-            localRegions.map((r) => (
-              <div
-                key={r.id}
-                className="absolute border-2 border-amber-600 bg-amber-400/60"
-                style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.width}%`, height: `${r.height}%` }}
-              />
-            ))}
-
-          {texts.map((t) =>
-            editingTextId === t.id ? (
-              <input
-                key={t.id}
-                autoFocus
-                className="absolute z-10 rounded bg-background px-1 text-sm outline outline-2 outline-primary"
-                style={{ left: `${t.x}%`, top: `${t.y}%` }}
-                value={t.text}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setTexts((prev) => prev.map((x) => (x.id === t.id ? { ...x, text: e.target.value } : x)))}
-                onBlur={() => setEditingTextId(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setEditingTextId(null);
-                  }
-                }}
-              />
-            ) : (
-              <div
-                key={t.id}
-                className="absolute z-10 cursor-pointer select-none rounded bg-black/70 px-1 text-sm font-semibold text-amber-300"
-                style={{ left: `${t.x}%`, top: `${t.y}%` }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingTextId(t.id);
-                }}
-              >
-                {t.text || "…"}
-              </div>
-            ),
-          )}
-
-          {drag && (tool === "select" || tool === "crop") && (
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="flex justify-center">
             <div
-              className={`absolute border-2 border-dashed ${
-                tool === "crop" ? "border-sky-500 bg-sky-400/30" : "border-amber-500 bg-amber-400/30"
-              }`}
-              style={{ left: `${drag.x}%`, top: `${drag.y}%`, width: `${drag.width}%`, height: `${drag.height}%` }}
-            />
-          )}
+              ref={containerRef}
+              className="relative inline-block select-none overflow-hidden rounded-lg border border-border"
+              style={{ cursor: tool === "text" ? "text" : "crosshair" }}
+              onMouseDown={handleContainerMouseDown}
+              onClick={handleContainerClick}
+            >
+              <img
+                ref={imgRef}
+                src={workingUrl}
+                alt=""
+                className="pointer-events-none block max-h-[70vh] w-auto max-w-full"
+                draggable={false}
+              />
+
+              {tool !== "crop" &&
+                localRegions.map((r) => (
+                  <div
+                    key={r.id}
+                    className="absolute cursor-move border-2 border-amber-600 bg-amber-400/60"
+                    style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.width}%`, height: `${r.height}%` }}
+                    onMouseDown={(e) => startRegionMove(e, r)}
+                  >
+                    <div
+                      className="absolute -bottom-1.5 -right-1.5 size-3 cursor-nwse-resize rounded-full border border-white bg-amber-700"
+                      onMouseDown={(e) => startRegionResize(e, r)}
+                    />
+                  </div>
+                ))}
+
+              {texts.map((t) =>
+                editingTextId === t.id ? (
+                  <input
+                    key={t.id}
+                    autoFocus
+                    className="absolute z-10 rounded bg-background px-1 text-sm outline outline-2 outline-primary"
+                    style={{ left: `${t.x}%`, top: `${t.y}%` }}
+                    value={t.text}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setTexts((prev) => prev.map((x) => (x.id === t.id ? { ...x, text: e.target.value } : x)))}
+                    onBlur={() => finishEditingText(t.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        finishEditingText(t.id);
+                      }
+                    }}
+                  />
+                ) : (
+                  <div
+                    key={t.id}
+                    className="absolute z-10 cursor-move select-none rounded bg-black/70 px-1 text-sm font-semibold text-amber-300"
+                    style={{ left: `${t.x}%`, top: `${t.y}%` }}
+                    onMouseDown={(e) => startTextDrag(e, t)}
+                  >
+                    {t.text || "…"}
+                  </div>
+                ),
+              )}
+
+              {drag && (
+                <div
+                  className={`absolute border-2 border-dashed ${
+                    tool === "crop" ? "border-sky-500 bg-sky-400/30" : "border-amber-500 bg-amber-400/30"
+                  }`}
+                  style={{ left: `${drag.x}%`, top: `${drag.y}%`, width: `${drag.width}%`, height: `${drag.height}%` }}
+                />
+              )}
+
+              {tool === "crop" && cropRect && (
+                <div
+                  className="absolute cursor-move border-2 border-sky-500 bg-sky-400/30"
+                  style={{ left: `${cropRect.x}%`, top: `${cropRect.y}%`, width: `${cropRect.width}%`, height: `${cropRect.height}%` }}
+                  onMouseDown={startCropMove}
+                >
+                  <div
+                    className="absolute -bottom-1.5 -right-1.5 size-3 cursor-nwse-resize rounded-full border border-white bg-sky-700"
+                    onMouseDown={startCropResize}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
 
           {tool === "crop" && cropRect && (
-            <div
-              className="absolute border-2 border-sky-500 bg-sky-400/30"
-              style={{ left: `${cropRect.x}%`, top: `${cropRect.y}%`, width: `${cropRect.width}%`, height: `${cropRect.height}%` }}
-            />
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Prévia do corte</span>
+              <canvas ref={previewCanvasRef} className="rounded border border-border bg-background" />
+            </div>
           )}
         </div>
 
@@ -271,10 +445,7 @@ export function ImageOcclusionEditor({
 
         {tool === "text" && texts.length > 0 && (
           <div className="text-xs text-muted-foreground">
-            {texts.length} texto(s) adicionado(s), clique num texto pra editar.{" "}
-            <button type="button" className="text-destructive underline hover:text-destructive/80" onClick={() => setTexts([])}>
-              Limpar todos
-            </button>
+            {texts.length} texto(s). Clique num texto pra editar, arraste pra mover — deixar vazio ao sair remove ele.
           </div>
         )}
 
