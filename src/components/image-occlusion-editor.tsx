@@ -10,23 +10,80 @@ export type RegionDraft = { id: string; x: number; y: number; width: number; hei
 type Rect = { x: number; y: number; width: number; height: number };
 type PendingText = { id: string; x: number; y: number; text: string; fontSize: number };
 type Tool = "select" | "crop" | "text";
+type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 // A single unified model for anything the user can drag on the canvas:
 // drawing a brand-new box, moving an existing box/text, or resizing an
-// existing box via its corner handle. Kept in a ref (not state) so the
-// window-level mousemove handler always reads the live anchor without
-// needing to be re-subscribed on every pixel of movement.
+// existing box via one of its 8 edge/corner handles. Kept in a ref (not
+// state) so the window-level mousemove handler always reads the live
+// anchor without needing to be re-subscribed on every pixel of movement.
 type Interaction =
   | { kind: "draw"; tool: "select" | "crop"; startX: number; startY: number }
   | { kind: "move-region"; id: string; startX: number; startY: number; origX: number; origY: number }
-  | { kind: "resize-region"; id: string; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number }
+  | { kind: "resize-region"; id: string; handle: ResizeHandle; startX: number; startY: number; orig: Rect }
   | { kind: "move-crop"; startX: number; startY: number; origX: number; origY: number }
-  | { kind: "resize-crop"; startX: number; startY: number; origX: number; origY: number; origW: number; origH: number }
+  | { kind: "resize-crop"; handle: ResizeHandle; startX: number; startY: number; orig: Rect }
   | { kind: "move-text"; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
   | { kind: "resize-text"; id: string; startClientY: number; origSize: number };
 
 const MIN_SIZE = 1.5; // percent — smallest a box is allowed to shrink to
 const DEFAULT_FONT_SIZE = 16; // px, on-screen
+
+// Resizing from an edge/corner keeps the OPPOSITE edge fixed. `orig` is the
+// rect's shape at drag start; dx/dy are the pointer's movement since then,
+// in the same 0–100 percent units as everything else.
+function applyResize(handle: ResizeHandle, orig: Rect, dx: number, dy: number): Rect {
+  let x = orig.x;
+  let y = orig.y;
+  let width = orig.width;
+  let height = orig.height;
+
+  if (handle.includes("e")) {
+    width = Math.max(MIN_SIZE, Math.min(100 - orig.x, orig.width + dx));
+  }
+  if (handle.includes("w")) {
+    const rightEdge = orig.x + orig.width;
+    const newX = Math.max(0, Math.min(rightEdge - MIN_SIZE, orig.x + dx));
+    x = newX;
+    width = rightEdge - newX;
+  }
+  if (handle.includes("s")) {
+    height = Math.max(MIN_SIZE, Math.min(100 - orig.y, orig.height + dy));
+  }
+  if (handle.includes("n")) {
+    const bottomEdge = orig.y + orig.height;
+    const newY = Math.max(0, Math.min(bottomEdge - MIN_SIZE, orig.y + dy));
+    y = newY;
+    height = bottomEdge - newY;
+  }
+
+  return { x, y, width, height };
+}
+
+const HANDLES: { key: ResizeHandle; pos: string; cursor: string }[] = [
+  { key: "nw", pos: "-top-1 -left-1", cursor: "cursor-nwse-resize" },
+  { key: "n", pos: "-top-1 left-1/2 -translate-x-1/2", cursor: "cursor-ns-resize" },
+  { key: "ne", pos: "-top-1 -right-1", cursor: "cursor-nesw-resize" },
+  { key: "e", pos: "top-1/2 -right-1 -translate-y-1/2", cursor: "cursor-ew-resize" },
+  { key: "se", pos: "-bottom-1 -right-1", cursor: "cursor-nwse-resize" },
+  { key: "s", pos: "-bottom-1 left-1/2 -translate-x-1/2", cursor: "cursor-ns-resize" },
+  { key: "sw", pos: "-bottom-1 -left-1", cursor: "cursor-nesw-resize" },
+  { key: "w", pos: "top-1/2 -left-1 -translate-y-1/2", cursor: "cursor-ew-resize" },
+];
+
+function ResizeHandles({ color, onStart }: { color: string; onStart: (e: React.MouseEvent, handle: ResizeHandle) => void }) {
+  return (
+    <>
+      {HANDLES.map((h) => (
+        <div
+          key={h.key}
+          className={`absolute size-1.5 rounded-full border border-white ${color} ${h.pos} ${h.cursor}`}
+          onMouseDown={(e) => onStart(e, h.key)}
+        />
+      ))}
+    </>
+  );
+}
 
 export function ImageOcclusionEditor({
   imageUrl,
@@ -54,12 +111,12 @@ export function ImageOcclusionEditor({
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const interactionRef = useRef<Interaction | null>(null);
   // Mirrors `drag` synchronously so the mouseup handler can read the final
-  // rectangle without nesting a setState call inside setDrag's updater —
-  // that nesting is what caused each draw to create two regions (React
-  // invokes updater functions twice in development to catch exactly this).
+  // rectangle without nesting a setState call inside setDrag's updater.
   const dragRef = useRef<Rect | null>(null);
-  // A click just used to dismiss an in-progress text edit shouldn't also
-  // count as "place a new text" — this flag suppresses that one click.
+  // A click that only served to end a text drag/edit shouldn't also count
+  // as "place a new text" — mousedown and mouseup landing on different
+  // elements still synthesizes a click on their common ancestor (the
+  // container), so this suppresses that one click.
   const suppressNextTextClickRef = useRef(false);
 
   function getPos(clientX: number, clientY: number) {
@@ -74,9 +131,6 @@ export function ImageOcclusionEditor({
     setActive(true);
   }
 
-  // Single window-level listener pair for every kind of drag. Attaching on
-  // window (not just the small editing surface) means dragging past the
-  // image edge clamps at the border instead of losing the interaction.
   useEffect(() => {
     if (!active) return;
 
@@ -103,9 +157,10 @@ export function ImageOcclusionEditor({
           }),
         );
       } else if (interaction.kind === "resize-region") {
-        const newW = Math.max(MIN_SIZE, Math.min(100 - interaction.origX, interaction.origW + (x - interaction.startX)));
-        const newH = Math.max(MIN_SIZE, Math.min(100 - interaction.origY, interaction.origH + (y - interaction.startY)));
-        setLocalRegions((prev) => prev.map((r) => (r.id === interaction.id ? { ...r, width: newW, height: newH } : r)));
+        const dx = x - interaction.startX;
+        const dy = y - interaction.startY;
+        const next = applyResize(interaction.handle, interaction.orig, dx, dy);
+        setLocalRegions((prev) => prev.map((r) => (r.id === interaction.id ? { ...r, ...next } : r)));
       } else if (interaction.kind === "move-crop") {
         const dx = x - interaction.startX;
         const dy = y - interaction.startY;
@@ -116,9 +171,9 @@ export function ImageOcclusionEditor({
           return { ...prev, x: newX, y: newY };
         });
       } else if (interaction.kind === "resize-crop") {
-        const newW = Math.max(MIN_SIZE, Math.min(100 - interaction.origX, interaction.origW + (x - interaction.startX)));
-        const newH = Math.max(MIN_SIZE, Math.min(100 - interaction.origY, interaction.origH + (y - interaction.startY)));
-        setCropRect((prev) => (prev ? { ...prev, width: newW, height: newH } : prev));
+        const dx = x - interaction.startX;
+        const dy = y - interaction.startY;
+        setCropRect(applyResize(interaction.handle, interaction.orig, dx, dy));
       } else if (interaction.kind === "move-text") {
         const dx = x - interaction.startX;
         const dy = y - interaction.startY;
@@ -152,9 +207,10 @@ export function ImageOcclusionEditor({
             setCropRect({ x: finalRect.x, y: finalRect.y, width: finalRect.width, height: finalRect.height });
           }
         }
-      } else if (interaction?.kind === "move-text" && !interaction.moved) {
-        // A plain click (no real drag) on a text label enters edit mode.
-        setEditingTextId(interaction.id);
+      } else if (interaction?.kind === "move-text") {
+        if (!interaction.moved) setEditingTextId(interaction.id);
+        suppressNextTextClickRef.current = true;
+      } else if (interaction?.kind === "resize-text") {
         suppressNextTextClickRef.current = true;
       }
     }
@@ -204,10 +260,17 @@ export function ImageOcclusionEditor({
     beginInteraction({ kind: "move-region", id: region.id, startX: x, startY: y, origX: region.x, origY: region.y });
   }
 
-  function startRegionResize(e: React.MouseEvent, region: RegionDraft) {
+  function startRegionResize(e: React.MouseEvent, region: RegionDraft, handle: ResizeHandle) {
     e.stopPropagation();
     const { x, y } = getPos(e.clientX, e.clientY);
-    beginInteraction({ kind: "resize-region", id: region.id, startX: x, startY: y, origX: region.x, origY: region.y, origW: region.width, origH: region.height });
+    beginInteraction({
+      kind: "resize-region",
+      id: region.id,
+      handle,
+      startX: x,
+      startY: y,
+      orig: { x: region.x, y: region.y, width: region.width, height: region.height },
+    });
   }
 
   function startCropMove(e: React.MouseEvent) {
@@ -217,11 +280,11 @@ export function ImageOcclusionEditor({
     beginInteraction({ kind: "move-crop", startX: x, startY: y, origX: cropRect.x, origY: cropRect.y });
   }
 
-  function startCropResize(e: React.MouseEvent) {
+  function startCropResize(e: React.MouseEvent, handle: ResizeHandle) {
     e.stopPropagation();
     if (!cropRect) return;
     const { x, y } = getPos(e.clientX, e.clientY);
-    beginInteraction({ kind: "resize-crop", startX: x, startY: y, origX: cropRect.x, origY: cropRect.y, origW: cropRect.width, origH: cropRect.height });
+    beginInteraction({ kind: "resize-crop", handle, startX: x, startY: y, orig: { ...cropRect } });
   }
 
   function startTextDrag(e: React.MouseEvent, t: PendingText) {
@@ -235,8 +298,6 @@ export function ImageOcclusionEditor({
     beginInteraction({ kind: "resize-text", id: t.id, startClientY: e.clientY, origSize: t.fontSize });
   }
 
-  // Live preview of the crop result, redrawn whenever the crop rectangle
-  // or working image changes.
   useEffect(() => {
     const canvas = previewCanvasRef.current;
     const img = imgRef.current;
@@ -294,9 +355,6 @@ export function ImageOcclusionEditor({
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
     if (texts.length > 0) {
-      // Scale each text's on-screen font size up to the image's real
-      // resolution, so it looks the same relative size once burned in as
-      // it did while editing on screen.
       const displayWidth = img.getBoundingClientRect().width || img.naturalWidth;
       const scale = img.naturalWidth / displayWidth;
       ctx.fillStyle = "#facc15";
@@ -351,9 +409,9 @@ export function ImageOcclusionEditor({
             </>
           )}
           <span className="text-xs text-muted-foreground">
-            {tool === "select" && "Arraste pra marcar. Arraste o centro de uma área pra mover, o canto pra redimensionar."}
-            {tool === "crop" && "Arraste pra selecionar o corte. Arraste o centro pra mover, o canto pra redimensionar."}
-            {tool === "text" && "Clique pra adicionar texto. Arraste o texto pra mover, o canto pra mudar o tamanho da fonte."}
+            {tool === "select" && "Arraste pra marcar. Arraste o centro pra mover, as alças pra redimensionar em qualquer direção."}
+            {tool === "crop" && "Arraste pra selecionar o corte. Arraste o centro pra mover, as alças pra redimensionar."}
+            {tool === "text" && "Clique pra adicionar texto. Arraste o texto pra mover, o cantinho pra mudar o tamanho da fonte."}
           </span>
         </div>
 
@@ -382,10 +440,7 @@ export function ImageOcclusionEditor({
                     style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.width}%`, height: `${r.height}%` }}
                     onMouseDown={(e) => startRegionMove(e, r)}
                   >
-                    <div
-                      className="absolute -bottom-1.5 -right-1.5 size-3 cursor-nwse-resize rounded-full border border-white bg-amber-700"
-                      onMouseDown={(e) => startRegionResize(e, r)}
-                    />
+                    <ResizeHandles color="bg-amber-700" onStart={(e, handle) => startRegionResize(e, r, handle)} />
                   </div>
                 ))}
 
@@ -417,7 +472,7 @@ export function ImageOcclusionEditor({
                   >
                     {t.text || "…"}
                     <div
-                      className="absolute -bottom-1 -right-1 size-2.5 cursor-ns-resize rounded-full border border-white bg-amber-700"
+                      className="absolute -bottom-1 -right-1 size-1.5 cursor-ns-resize rounded-full border border-white bg-amber-700"
                       onMouseDown={(e) => startTextResize(e, t)}
                     />
                   </div>
@@ -439,10 +494,7 @@ export function ImageOcclusionEditor({
                   style={{ left: `${cropRect.x}%`, top: `${cropRect.y}%`, width: `${cropRect.width}%`, height: `${cropRect.height}%` }}
                   onMouseDown={startCropMove}
                 >
-                  <div
-                    className="absolute -bottom-1.5 -right-1.5 size-3 cursor-nwse-resize rounded-full border border-white bg-sky-700"
-                    onMouseDown={startCropResize}
-                  />
+                  <ResizeHandles color="bg-sky-700" onStart={(e, handle) => startCropResize(e, handle)} />
                 </div>
               )}
             </div>
