@@ -22,6 +22,9 @@ export const Route = createFileRoute("/_authenticated/criacao")({
 
 type CardType = "simples" | "invertido" | "cloze" | "oclusao";
 
+const CLOZE_REGEX = /\{\{c::(.*?)\}\}/;
+const CLOZE_REGEX_G = /\{\{c::(.*?)\}\}/g;
+
 type DrawingRect = { startX: number; startY: number; x: number; y: number; width: number; height: number };
 
 function CriacaoPage() {
@@ -36,6 +39,8 @@ function CriacaoPage() {
   const [cardType, setCardType] = useState<CardType>("simples");
   const invert = cardType === "invertido";
   const cloze = cardType === "cloze";
+  const hasClozeMarker = CLOZE_REGEX.test(question);
+  const questionInputRef = useRef<HTMLInputElement>(null);
 
   // Image occlusion state
   const [occlusionFile, setOcclusionFile] = useState<File | null>(null);
@@ -95,17 +100,6 @@ function CriacaoPage() {
     setDrawing({ startX: x, startY: y, x, y, width: 0, height: 0 });
   }
 
-  // Track the drag on the window, not just the image element: once the
-  // cursor leaves the small image area, plain onMouseMove/onMouseLeave on
-  // the container stop firing and the drag used to get cancelled outright.
-  // Listening on window keeps the drag alive; getRelativePos already
-  // clamps to 0–100%, so the rectangle just stops growing at the edge
-  // instead of losing the selection.
-  //
-  // The anchor point (and the finished rectangle at drop time) live in a
-  // ref, not inside the setDrawing updater — calling setRegions from
-  // within another state updater is invalid and gets the updater invoked
-  // twice in development, which was creating two regions per drag.
   const isDrawing = drawing !== null;
   useEffect(() => {
     if (!isDrawing) return;
@@ -139,6 +133,27 @@ function CriacaoPage() {
       window.removeEventListener("mouseup", handleWindowMouseUp);
     };
   }, [isDrawing]);
+
+  function wrapSelectionAsCloze() {
+    const el = questionInputRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (start === end) {
+      toast.error("Selecione a palavra ou trecho que quer esconder primeiro.");
+      return;
+    }
+    const before = question.slice(0, start);
+    const selected = question.slice(start, end);
+    const after = question.slice(end);
+    const marker = `{{c::${selected}}}`;
+    setQuestion(before + marker + after);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = before.length + marker.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
 
   async function handlePasteButtonClick() {
     try {
@@ -244,6 +259,10 @@ function CriacaoPage() {
                   }
 
                   if (!question.trim() || (!cloze && !answer.trim())) return;
+                  if (cloze && !CLOZE_REGEX.test(question)) {
+                    toast.error("Marque pelo menos uma palavra com {{c::palavra}} antes de criar o card.");
+                    return;
+                  }
 
                   try {
                     const deckRow = await createNewDeck({ data: { path: deck } });
@@ -374,6 +393,36 @@ function CriacaoPage() {
                       </>
                     )}
                   </div>
+                ) : cardType === "cloze" ? (
+                  <div className="grid gap-2">
+                    <label className="flex flex-col gap-2 text-sm text-muted-foreground">
+                      Pergunta
+                      <div className="flex gap-2">
+                        <Input
+                          ref={questionInputRef}
+                          value={question}
+                          onChange={(event) => setQuestion(event.target.value)}
+                          placeholder="Ex: A capital da França é {{c::Paris}}"
+                          className="flex-1"
+                        />
+                        <Button type="button" variant="outline" onClick={wrapSelectionAsCloze}>
+                          Marcar seleção
+                        </Button>
+                      </div>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Selecione a palavra a esconder no campo e clique em "Marcar seleção" — ou digite{" "}
+                      <code className="rounded bg-muted px-1">{"{{c::palavra}}"}</code> manualmente. Pode marcar mais de uma no mesmo card.
+                    </p>
+                    {question.trim() !== "" && (
+                      <p className="text-xs text-muted-foreground">
+                        Pré-visualização:{" "}
+                        <span className="text-foreground">
+                          {hasClozeMarker ? question.replace(CLOZE_REGEX_G, "___") : "(nenhuma palavra marcada ainda)"}
+                        </span>
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <div className="grid gap-3">
                     <label className="flex flex-col gap-2 text-sm text-muted-foreground">
@@ -407,7 +456,9 @@ function CriacaoPage() {
                   disabled={
                     cardType === "oclusao"
                       ? uploading || !occlusionFile || regions.length === 0
-                      : create.isPending || !question.trim() || (!cloze && !answer.trim())
+                      : cloze
+                        ? create.isPending || !question.trim() || !hasClozeMarker
+                        : create.isPending || !question.trim() || !answer.trim()
                   }
                 >
                   {(cardType === "oclusao" ? uploading : create.isPending) ? (

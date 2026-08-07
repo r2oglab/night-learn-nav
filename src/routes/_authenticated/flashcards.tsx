@@ -197,8 +197,19 @@ function FlashcardsPage() {
                   ) : (
                     <>
                       <div>
-                        <p className="font-medium">{card.pergunta}</p>
-                        <p className="text-sm text-muted-foreground">{card.resposta}</p>
+                        {/\{\{c::(.*?)\}\}/.test(card.pergunta) ? (
+                          <>
+                            <p className="font-medium">{card.pergunta.replace(/\{\{c::(.*?)\}\}/g, "___")}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {card.pergunta.replace(/\{\{c::(.*?)\}\}/g, (_: string, g: string) => g)}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="font-medium">{card.pergunta}</p>
+                            <p className="text-sm text-muted-foreground">{card.resposta}</p>
+                          </>
+                        )}
                         <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
                       </div>
                       <div className="flex items-center gap-3 text-xs">
