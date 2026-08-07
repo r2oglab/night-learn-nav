@@ -87,8 +87,11 @@ function CriacaoPage() {
     return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
   }
 
+  const drawAnchorRef = useRef<{ startX: number; startY: number } | null>(null);
+
   function handleMouseDown(e: React.MouseEvent) {
     const { x, y } = getRelativePos(e.clientX, e.clientY);
+    drawAnchorRef.current = { startX: x, startY: y };
     setDrawing({ startX: x, startY: y, x, y, width: 0, height: 0 });
   }
 
@@ -98,30 +101,36 @@ function CriacaoPage() {
   // Listening on window keeps the drag alive; getRelativePos already
   // clamps to 0–100%, so the rectangle just stops growing at the edge
   // instead of losing the selection.
+  //
+  // The anchor point (and the finished rectangle at drop time) live in a
+  // ref, not inside the setDrawing updater — calling setRegions from
+  // within another state updater is invalid and gets the updater invoked
+  // twice in development, which was creating two regions per drag.
   const isDrawing = drawing !== null;
   useEffect(() => {
     if (!isDrawing) return;
     function handleWindowMouseMove(e: MouseEvent) {
+      const anchor = drawAnchorRef.current;
+      if (!anchor) return;
       const { x, y } = getRelativePos(e.clientX, e.clientY);
-      setDrawing((prev) => {
-        if (!prev) return prev;
-        const newX = Math.min(x, prev.startX);
-        const newY = Math.min(y, prev.startY);
-        const width = Math.abs(x - prev.startX);
-        const height = Math.abs(y - prev.startY);
-        return { ...prev, x: newX, y: newY, width, height };
-      });
+      const newX = Math.min(x, anchor.startX);
+      const newY = Math.min(y, anchor.startY);
+      const width = Math.abs(x - anchor.startX);
+      const height = Math.abs(y - anchor.startY);
+      setDrawing({ startX: anchor.startX, startY: anchor.startY, x: newX, y: newY, width, height });
     }
     function handleWindowMouseUp() {
-      setDrawing((prev) => {
-        if (prev && prev.width > 1 && prev.height > 1) {
+      setDrawing((current) => {
+        if (current && current.width > 1 && current.height > 1) {
+          const finished = current;
           setRegions((r) => [
             ...r,
-            { id: crypto.randomUUID(), x: prev.x, y: prev.y, width: prev.width, height: prev.height, label: "" },
+            { id: crypto.randomUUID(), x: finished.x, y: finished.y, width: finished.width, height: finished.height, label: "" },
           ]);
         }
         return null;
       });
+      drawAnchorRef.current = null;
     }
     window.addEventListener("mousemove", handleWindowMouseMove);
     window.addEventListener("mouseup", handleWindowMouseUp);
@@ -313,12 +322,13 @@ function CriacaoPage() {
                             </button>
                           </div>
                         </div>
-                        <div
-                          ref={imageAreaRef}
-                          className="relative w-full max-w-xl cursor-crosshair select-none overflow-hidden rounded-lg border border-border"
-                          onMouseDown={handleMouseDown}
-                        >
-                          <img src={occlusionImageUrl} alt="" className="pointer-events-none block w-full" draggable={false} />
+                        <div className="flex">
+                          <div
+                            ref={imageAreaRef}
+                            className="relative inline-block cursor-crosshair select-none overflow-hidden rounded-lg border border-border"
+                            onMouseDown={handleMouseDown}
+                          >
+                          <img src={occlusionImageUrl} alt="" className="pointer-events-none block max-h-80 w-auto max-w-full" draggable={false} />
                           {regions.map((r) => (
                             <div
                               key={r.id}
@@ -332,6 +342,7 @@ function CriacaoPage() {
                               style={{ left: `${drawing.x}%`, top: `${drawing.y}%`, width: `${drawing.width}%`, height: `${drawing.height}%` }}
                             />
                           )}
+                          </div>
                         </div>
 
                         {regions.length > 0 && (
