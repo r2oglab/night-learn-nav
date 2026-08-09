@@ -59,8 +59,8 @@ function Configuracoes() {
       if (error) throw error;
       const url = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
       upsertMutation.mutate({ avatar_url: url });
-    } catch (err: any) {
-      toast.error(err?.message ?? String(err));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setUploadingAvatar(false);
     }
@@ -94,8 +94,8 @@ function Configuracoes() {
       a.remove();
       URL.revokeObjectURL(url);
       toast.success("CSV gerado");
-    } catch (err: any) {
-      toast.error(err?.message ?? String(err));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
     }
   };
 

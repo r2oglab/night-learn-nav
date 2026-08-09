@@ -263,8 +263,8 @@ function CriacaoPage() {
       setCsvSkipped(0);
       setCsvTagsColumn(null);
       setCsvUseTagsAsDeck(false);
-    } catch (err: any) {
-      toast.error(err?.message ?? String(err));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting(false);
     }
@@ -335,8 +335,8 @@ function CriacaoPage() {
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       toast.success(`${count} card(s) de oclusão criado(s)`);
-    } catch (err: any) {
-      toast.error(err?.message ?? String(err));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setUploading(false);
     }
@@ -416,8 +416,8 @@ function CriacaoPage() {
                       cloze,
                       typeIn,
                     });
-                  } catch (err: any) {
-                    toast.error(err?.message ?? String(err));
+                  } catch (err: unknown) {
+                    toast.error(err instanceof Error ? err.message : String(err));
                   }
                 }}
               >

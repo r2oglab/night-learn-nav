@@ -129,8 +129,8 @@ function FlashcardsPage() {
         `Áreas atualizadas: ${result.updated} mantida(s), ${result.added} nova(s), ${result.removed} removida(s)`,
       );
       setOcclusionCard(null);
-    } catch (err: any) {
-      toast.error(err?.message ?? String(err));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSavingOcclusion(false);
     }

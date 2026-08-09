@@ -136,8 +136,8 @@ export function ReviewSession({
       if (next >= sessionCards.length) {
         setFinished(true);
       }
-    } catch (err: any) {
-      toast.error(err?.message ?? String(err));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       gradingRef.current = false;
       setLoading(false);

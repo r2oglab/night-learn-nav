@@ -7,7 +7,9 @@ export const getUserSettings = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("user_settings")
-      .select("user_id,daily_goal,desired_retention,last_review_date,streak,display_name,avatar_url")
+      .select(
+        "user_id,daily_goal,desired_retention,last_review_date,streak,display_name,avatar_url",
+      )
       .eq("user_id", context.userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
