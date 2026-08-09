@@ -201,12 +201,19 @@ function CriacaoPage() {
       toast.error("Arquivo vazio ou ilegível.");
       return;
     }
-    // A deck column only makes sense if the file actually has 3+ columns.
-    const wideEnough = rows.some((r) => r.length >= 3);
+    // Having 3 columns does NOT imply the first one is a deck: Anki's own
+    // export is "Front, Back, Tags", where the third column is the tag and
+    // the deck isn't in the file at all. Guessing "deck first" there shifts
+    // every field by one. Only assume a leading deck column when the first
+    // cell actually looks like a deck path (contains "::") — otherwise the
+    // safe default is question/answer, which the user can override.
+    const firstDataRow = csvHasHeader ? rows[1] : rows[0];
+    const looksLikeDeckColumn =
+      !!firstDataRow && firstDataRow.length >= 3 && (firstDataRow[0] ?? "").includes("::");
     setCsvRawRows(rows);
     setCsvFileName(file.name);
-    setCsvDeckColumn(wideEnough);
-    recomputeCsvPreview(rows, csvHasHeader, wideEnough, deckPath);
+    setCsvDeckColumn(looksLikeDeckColumn);
+    recomputeCsvPreview(rows, csvHasHeader, looksLikeDeckColumn, deckPath);
   }
 
   async function handleImportSubmit() {
