@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Loader2, ClipboardPaste, Maximize2 } from "lucide-react";
+import { Plus, Loader2, ClipboardPaste, Maximize2, Upload } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -12,15 +12,16 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
-import { createCard, createImageOcclusionCards } from "@/lib/cards.functions";
+import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
+import { parseCsv, detectDelimiter, rowsToCards, type ParsedCardRow } from "@/lib/csv";
 
 export const Route = createFileRoute("/_authenticated/criacao")({
   component: CriacaoPage,
 });
 
-type CardType = "simples" | "invertido" | "cloze" | "oclusao";
+type CardType = "simples" | "invertido" | "cloze" | "oclusao" | "importar";
 
 type DrawingRect = {
   startX: number;
@@ -68,6 +69,16 @@ function CriacaoPage() {
   const [drawing, setDrawing] = useState<DrawingRect | null>(null);
   const [uploading, setUploading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+
+  // CSV import state
+  const [csvPreview, setCsvPreview] = useState<ParsedCardRow[] | null>(null);
+  const [csvSkipped, setCsvSkipped] = useState(0);
+  const [csvHasHeader, setCsvHasHeader] = useState(true);
+  const [csvDeckColumn, setCsvDeckColumn] = useState(false);
+  const [csvRawRows, setCsvRawRows] = useState<string[][] | null>(null);
+  const [csvFileName, setCsvFileName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const runImport = useServerFn(importCards);
   const imageAreaRef = useRef<HTMLDivElement>(null);
 
   const create = useMutation({
@@ -166,6 +177,59 @@ function CriacaoPage() {
       window.removeEventListener("mouseup", handleWindowMouseUp);
     };
   }, [isDrawing]);
+
+  function recomputeCsvPreview(
+    rows: string[][],
+    hasHeader: boolean,
+    deckColumn: boolean,
+    deck: string,
+  ) {
+    const { cards, skipped } = rowsToCards(rows, {
+      hasHeader,
+      defaultDeck: deck.trim() || "Importados",
+      deckColumnFirst: deckColumn,
+    });
+    setCsvPreview(cards);
+    setCsvSkipped(skipped);
+  }
+
+  async function handleCsvFile(file: File) {
+    const text = await file.text();
+    const delimiter = detectDelimiter(text);
+    const rows = parseCsv(text, delimiter);
+    if (rows.length === 0) {
+      toast.error("Arquivo vazio ou ilegível.");
+      return;
+    }
+    // A deck column only makes sense if the file actually has 3+ columns.
+    const wideEnough = rows.some((r) => r.length >= 3);
+    setCsvRawRows(rows);
+    setCsvFileName(file.name);
+    setCsvDeckColumn(wideEnough);
+    recomputeCsvPreview(rows, csvHasHeader, wideEnough, deckPath);
+  }
+
+  async function handleImportSubmit() {
+    if (!csvPreview || csvPreview.length === 0) {
+      toast.error("Nada para importar.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const result = await runImport({ data: { cards: csvPreview } });
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      toast.success(`${result.imported} card(s) importado(s) em ${result.decks} deck(s)`);
+      setCsvPreview(null);
+      setCsvRawRows(null);
+      setCsvFileName("");
+      setCsvSkipped(0);
+    } catch (err: any) {
+      toast.error(err?.message ?? String(err));
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function handlePasteButtonClick() {
     try {
@@ -272,6 +336,13 @@ function CriacaoPage() {
                 className="mb-6 grid gap-3"
                 onSubmit={async (event) => {
                   event.preventDefault();
+                  // Import carries a deck per row (or falls back to a default),
+                  // so the deck field isn't required for it.
+                  if (cardType === "importar") {
+                    await handleImportSubmit();
+                    return;
+                  }
+
                   const deck = deckPath.trim();
                   if (!deck) {
                     toast.error("Informe o caminho do deck (ex: Deck::Subdeck)");
@@ -311,11 +382,22 @@ function CriacaoPage() {
                 }}
               >
                 <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                  Deck (use `::` para sub-decks)
+                  {cardType === "importar"
+                    ? "Deck padrão (usado quando a linha não traz o deck)"
+                    : "Deck (use `::` para sub-decks)"}
                   <Input
                     value={deckPath}
-                    onChange={(event) => setDeckPath(event.target.value)}
-                    placeholder="Ex: Biologia::Genética"
+                    onChange={(event) => {
+                      setDeckPath(event.target.value);
+                      if (cardType === "importar" && csvRawRows)
+                        recomputeCsvPreview(
+                          csvRawRows,
+                          csvHasHeader,
+                          csvDeckColumn,
+                          event.target.value,
+                        );
+                    }}
+                    placeholder={cardType === "importar" ? "Importados" : "Ex: Biologia::Genética"}
                   />
                 </label>
 
@@ -340,9 +422,128 @@ function CriacaoPage() {
                     <RadioGroupItem value="oclusao" />
                     <span className="text-muted-foreground">Oclusão de imagem</span>
                   </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <RadioGroupItem value="importar" />
+                    <span className="text-muted-foreground">Importar CSV</span>
+                  </label>
                 </RadioGroup>
 
-                {cardType === "oclusao" ? (
+                {cardType === "importar" ? (
+                  <div className="grid gap-3">
+                    {!csvPreview ? (
+                      <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                        <p>Escolha um arquivo .csv ou .txt exportado do Anki, Excel ou similar</p>
+                        <input
+                          type="file"
+                          accept=".csv,.txt,text/csv,text/plain"
+                          className="text-xs"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void handleCsvFile(file);
+                          }}
+                        />
+                        <p className="text-xs">
+                          Formato aceito: 2 colunas (pergunta, resposta) ou 3 colunas (deck,
+                          pergunta, resposta). Separador vírgula, ponto-e-vírgula ou tabulação —
+                          detectado automaticamente.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>
+                            <span className="font-medium text-foreground">{csvFileName}</span> —{" "}
+                            {csvPreview.length} card(s) prontos
+                            {csvSkipped > 0 && `, ${csvSkipped} linha(s) ignorada(s)`}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-muted-foreground underline hover:text-foreground"
+                            onClick={() => {
+                              setCsvPreview(null);
+                              setCsvRawRows(null);
+                              setCsvFileName("");
+                              setCsvSkipped(0);
+                            }}
+                          >
+                            Trocar arquivo
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-4 text-sm">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={csvHasHeader}
+                              onChange={(e) => {
+                                setCsvHasHeader(e.target.checked);
+                                if (csvRawRows)
+                                  recomputeCsvPreview(
+                                    csvRawRows,
+                                    e.target.checked,
+                                    csvDeckColumn,
+                                    deckPath,
+                                  );
+                              }}
+                            />
+                            <span className="text-muted-foreground">
+                              Primeira linha é cabeçalho
+                            </span>
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={csvDeckColumn}
+                              onChange={(e) => {
+                                setCsvDeckColumn(e.target.checked);
+                                if (csvRawRows)
+                                  recomputeCsvPreview(
+                                    csvRawRows,
+                                    csvHasHeader,
+                                    e.target.checked,
+                                    deckPath,
+                                  );
+                              }}
+                            />
+                            <span className="text-muted-foreground">Primeira coluna é o deck</span>
+                          </label>
+                        </div>
+
+                        {csvPreview.length > 0 && (
+                          <div className="overflow-x-auto rounded-lg border border-border">
+                            <table className="w-full text-left text-xs">
+                              <thead className="border-b border-border text-muted-foreground">
+                                <tr>
+                                  <th className="p-2 font-medium">Deck</th>
+                                  <th className="p-2 font-medium">Pergunta</th>
+                                  <th className="p-2 font-medium">Resposta</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {csvPreview.slice(0, 5).map((c, i) => (
+                                  <tr key={i} className="border-b border-border last:border-0">
+                                    <td className="max-w-32 truncate p-2 text-muted-foreground">
+                                      {c.deckPath}
+                                    </td>
+                                    <td className="max-w-64 truncate p-2">{c.pergunta}</td>
+                                    <td className="max-w-64 truncate p-2 text-muted-foreground">
+                                      {c.resposta}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            {csvPreview.length > 5 && (
+                              <p className="p-2 text-xs text-muted-foreground">
+                                ...e mais {csvPreview.length - 5} card(s)
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : cardType === "oclusao" ? (
                   <div className="grid gap-3">
                     {!occlusionImageUrl ? (
                       <div
@@ -545,19 +746,33 @@ function CriacaoPage() {
                 <Button
                   type="submit"
                   disabled={
-                    cardType === "oclusao"
-                      ? uploading || !occlusionFile || regions.length === 0
-                      : cloze
-                        ? create.isPending || !clozeText.trim() || !hasHiddenWord
-                        : create.isPending || !question.trim() || !answer.trim()
+                    cardType === "importar"
+                      ? importing || !csvPreview || csvPreview.length === 0
+                      : cardType === "oclusao"
+                        ? uploading || !occlusionFile || regions.length === 0
+                        : cloze
+                          ? create.isPending || !clozeText.trim() || !hasHiddenWord
+                          : create.isPending || !question.trim() || !answer.trim()
                   }
                 >
-                  {(cardType === "oclusao" ? uploading : create.isPending) ? (
+                  {(
+                    cardType === "importar"
+                      ? importing
+                      : cardType === "oclusao"
+                        ? uploading
+                        : create.isPending
+                  ) ? (
                     <Loader2 className="size-4 animate-spin" />
+                  ) : cardType === "importar" ? (
+                    <Upload className="size-4" />
                   ) : (
                     <Plus className="size-4" />
                   )}
-                  {cardType === "oclusao" ? `Criar ${regions.length || ""} card(s)` : "Criar card"}
+                  {cardType === "importar"
+                    ? `Importar ${csvPreview?.length ?? ""} card(s)`
+                    : cardType === "oclusao"
+                      ? `Criar ${regions.length || ""} card(s)`
+                      : "Criar card"}
                 </Button>
               </form>
             </div>

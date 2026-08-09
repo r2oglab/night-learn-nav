@@ -253,3 +253,194 @@ export const createImageOcclusionCards = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
+  
+  /**
+ * Bulk-create plain cards from an already-parsed CSV.
+ *
+ * Deck paths are resolved once per distinct path (not once per row), since
+ * an import of a few hundred cards typically spans only a handful of decks
+ * and each resolution walks the hierarchy segment by segment.
+ */
+export const importCards = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: { cards: { deckPath: string; pergunta: string; resposta: string }[] }) => {
+      if (!input.cards || input.cards.length === 0) throw new Error("Nenhum card para importar.");
+      if (input.cards.length > 5000)
+        throw new Error("Importação limitada a 5000 cards por vez. Divida o arquivo.");
+      return { cards: input.cards };
+    },
+  )
+  .handler(async ({ data, context }) => {
+    const deckIdByPath = new Map<string, string>();
+
+    async function resolveDeckPath(path: string): Promise<string> {
+      const cached = deckIdByPath.get(path);
+      if (cached) return cached;
+
+      const segments = path
+        .split("::")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (segments.length === 0) throw new Error(`Caminho de deck inválido: "${path}"`);
+
+      let parentId: string | null = null;
+      let deckId = "";
+
+      for (const segment of segments) {
+        const query = context.supabase
+          .from("decks")
+          .select("*")
+          .eq("user_id", context.userId)
+          .eq("name", segment)
+          .order("created_at", { ascending: true })
+          .limit(1);
+
+        const selectQuery: any =
+          parentId === null ? query.is("parent_id", null) : query.eq("parent_id", parentId);
+
+        const { data: existingRows, error: selectError } = await selectQuery;
+        if (selectError) throw new Error(selectError.message);
+
+        const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+        if (existing) {
+          deckId = existing.id;
+          parentId = existing.id;
+          continue;
+        }
+
+        const { data: created, error: insertError } = await context.supabase
+          .from("decks")
+          .insert({ user_id: context.userId, name: segment, parent_id: parentId })
+          .select("*")
+          .single();
+        if (insertError) throw new Error(insertError.message);
+
+        deckId = created.id;
+        parentId = created.id;
+      }
+
+      deckIdByPath.set(path, deckId);
+      return deckId;
+    }
+
+    const inserts: any[] = [];
+    for (const card of data.cards) {
+      const deckId = await resolveDeckPath(card.deckPath);
+      inserts.push({
+        user_id: context.userId,
+        deck_id: deckId,
+        pergunta: card.pergunta,
+        resposta: card.resposta,
+        ...newCardFields(),
+      });
+    }
+
+    // Insert in chunks so one oversized request can't blow past payload
+    // limits partway through and leave the import half-applied silently.
+    const CHUNK = 500;
+    let imported = 0;
+    for (let i = 0; i < inserts.length; i += CHUNK) {
+      const chunk = inserts.slice(i, i + CHUNK);
+      const { error } = await context.supabase.from("cards").insert(chunk);
+      if (error) throw new Error(`Falha após importar ${imported} card(s): ${error.message}`);
+      imported += chunk.length;
+    }
+
+    return { imported, decks: deckIdByPath.size };
+  });
+
+/**
+ * Replace the mask layout (and optionally the image) of an existing
+ * occlusion set.
+ *
+ * All cards sharing `occlusion_target_id` values from one image are updated
+ * together: regions whose id survives keep their card (and its FSRS
+ * scheduling), removed regions have their card deleted, and newly drawn
+ * regions get a fresh card. Rewriting every card from scratch would reset
+ * review history the user has already built up.
+ */
+export const updateImageOcclusion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    (input: { card_id: string; image_url?: string | undefined; regions: OcclusionRegion[] }) => {
+      const cardId = input.card_id?.trim();
+      if (!cardId) throw new Error("Card inválido.");
+      if (!input.regions || input.regions.length === 0)
+        throw new Error("Mantenha pelo menos uma área de oclusão.");
+      return { card_id: cardId, image_url: input.image_url, regions: input.regions };
+    },
+  )
+  .handler(async ({ data, context }) => {
+    const { data: anchor, error: anchorError } = await context.supabase
+      .from("cards")
+      .select("*")
+      .eq("id", data.card_id)
+      .single();
+    if (anchorError || !anchor) throw new Error(anchorError?.message ?? "Card não encontrado.");
+    if (!anchor.image_url) throw new Error("Este card não é de oclusão de imagem.");
+
+    // Every card generated from the same picture shares its image_url.
+    const { data: siblings, error: siblingsError } = await context.supabase
+      .from("cards")
+      .select("*")
+      .eq("deck_id", anchor.deck_id)
+      .eq("image_url", anchor.image_url);
+    if (siblingsError) throw new Error(siblingsError.message);
+
+    const imageUrl = data.image_url?.trim() || anchor.image_url;
+    const keptIds = new Set(data.regions.map((r) => r.id));
+    const existingByTarget = new Map<string, any>();
+    for (const row of siblings ?? []) {
+      if (row.occlusion_target_id) existingByTarget.set(row.occlusion_target_id, row);
+    }
+
+    // 1. Remove cards whose region no longer exists.
+    const toDelete = (siblings ?? [])
+      .filter((row: any) => row.occlusion_target_id && !keptIds.has(row.occlusion_target_id))
+      .map((row: any) => row.id);
+    if (toDelete.length > 0) {
+      const { error } = await context.supabase.from("cards").delete().in("id", toDelete);
+      if (error) throw new Error(error.message);
+    }
+
+    // 2. Update the cards that survive, preserving their FSRS state.
+    for (const region of data.regions) {
+      const existing = existingByTarget.get(region.id);
+      if (!existing) continue;
+      const { error } = await context.supabase
+        .from("cards")
+        .update({
+          pergunta: region.label ? `[Oclusão] ${region.label}` : "[Oclusão de imagem]",
+          resposta: region.label ?? "",
+          image_url: imageUrl,
+          occlusion_regions: data.regions,
+        })
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+    }
+
+    // 3. Create cards for regions drawn since the last save.
+    const newRegions = data.regions.filter((r) => !existingByTarget.has(r.id));
+    if (newRegions.length > 0) {
+      const inserts = newRegions.map((region) => ({
+        user_id: context.userId,
+        deck_id: anchor.deck_id,
+        pergunta: region.label ? `[Oclusão] ${region.label}` : "[Oclusão de imagem]",
+        resposta: region.label ?? "",
+        image_url: imageUrl,
+        occlusion_regions: data.regions,
+        occlusion_target_id: region.id,
+        ...newCardFields(),
+      }));
+      const { error } = await context.supabase.from("cards").insert(inserts);
+      if (error) throw new Error(error.message);
+    }
+
+    // If the picture itself was replaced, the old file may now be unused.
+    if (imageUrl !== anchor.image_url) {
+      await cleanupOrphanedCardImages(context.supabase, [anchor.image_url]);
+    }
+
+    return { updated: data.regions.length, removed: toDelete.length, added: newRegions.length };
+  });

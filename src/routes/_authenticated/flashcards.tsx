@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { listDecks, deleteDeck, updateDeck } from "@/lib/decks.functions";
-import { listCards, deleteCard, updateCard } from "@/lib/cards.functions";
+import { listCards, deleteCard, updateCard, updateImageOcclusion } from "@/lib/cards.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 
 export const Route = createFileRoute("/_authenticated/flashcards")({
   component: FlashcardsPage,
@@ -56,6 +58,54 @@ function FlashcardsPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  // Occlusion editing: the card whose mask layout is being reworked.
+  const [occlusionCard, setOcclusionCard] = useState<any | null>(null);
+  const [savingOcclusion, setSavingOcclusion] = useState(false);
+  const saveOcclusion = useServerFn(updateImageOcclusion);
+
+  async function handleOcclusionSave(file: File | null, newRegions: RegionDraft[]) {
+    if (!occlusionCard) return;
+    setSavingOcclusion(true);
+    try {
+      let imageUrl: string | undefined;
+      // A cropped or text-annotated picture is a NEW file: upload it and
+      // point every card of this set at it.
+      if (file) {
+        const path = `${crypto.randomUUID()}.png`;
+        const { error: uploadError } = await supabase.storage
+          .from("card-images")
+          .upload(path, file);
+        if (uploadError) throw uploadError;
+        imageUrl = supabase.storage.from("card-images").getPublicUrl(path).data.publicUrl;
+      }
+
+      const result = await saveOcclusion({
+        data: {
+          card_id: occlusionCard.id,
+          image_url: imageUrl,
+          regions: newRegions.map((r) => ({
+            id: r.id,
+            x: r.x,
+            y: r.y,
+            width: r.width,
+            height: r.height,
+            label: r.label.trim() || undefined,
+          })),
+        },
+      });
+
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success(
+        `Áreas atualizadas: ${result.updated} mantida(s), ${result.added} nova(s), ${result.removed} removida(s)`,
+      );
+      setOcclusionCard(null);
+    } catch (err: any) {
+      toast.error(err?.message ?? String(err));
+    } finally {
+      setSavingOcclusion(false);
+    }
+  }
 
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
   const [editingDeckName, setEditingDeckName] = useState("");
@@ -243,16 +293,25 @@ function FlashcardsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3 text-xs">
-                        <button
-                          className="text-muted-foreground underline hover:text-foreground"
-                          onClick={() => {
-                            setEditingId(card.id);
-                            setEditingQuestion(card.pergunta);
-                            setEditingAnswer(card.resposta);
-                          }}
-                        >
-                          Editar
-                        </button>
+                        {card.image_url ? (
+                          <button
+                            className="text-muted-foreground underline hover:text-foreground"
+                            onClick={() => setOcclusionCard(card)}
+                          >
+                            Editar áreas
+                          </button>
+                        ) : (
+                          <button
+                            className="text-muted-foreground underline hover:text-foreground"
+                            onClick={() => {
+                              setEditingId(card.id);
+                              setEditingQuestion(card.pergunta);
+                              setEditingAnswer(card.resposta);
+                            }}
+                          >
+                            Editar
+                          </button>
+                        )}
                         <button
                           className="text-destructive underline hover:text-destructive/80 disabled:opacity-50"
                           disabled={delMutation.isPending}
@@ -298,6 +357,25 @@ function FlashcardsPage() {
 
           <main className="flex flex-1 justify-center p-6">
             <div className="w-full max-w-3xl">
+              {occlusionCard && (
+                <ImageOcclusionEditor
+                  imageUrl={occlusionCard.image_url}
+                  regions={(occlusionCard.occlusion_regions ?? []).map((r: any) => ({
+                    id: r.id,
+                    x: r.x,
+                    y: r.y,
+                    width: r.width,
+                    height: r.height,
+                    label: r.label ?? "",
+                  }))}
+                  onClose={() => {
+                    if (!savingOcclusion) setOcclusionCard(null);
+                  }}
+                  onApply={({ file, regions: newRegions }) => {
+                    void handleOcclusionSave(file, newRegions);
+                  }}
+                />
+              )}
               {decksLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
