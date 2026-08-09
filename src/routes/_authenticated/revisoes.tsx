@@ -101,6 +101,8 @@ function RevisoesPage() {
   // group correct/incorrect per deck without a second lookup.
   const cardsToReview = cards
     .filter((card) => {
+      // Suspended cards keep their scheduling but stay out of the queue.
+      if (card.suspended) return false;
       try {
         const dueDate = new Date(`${card.due}T00:00:00`);
         return dueDate <= todayStart;

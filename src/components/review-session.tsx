@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { X, Play, Undo2 } from "lucide-react";
+import { X, Undo2, MoreVertical, CalendarClock } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Rating } from "ts-fsrs";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { reviewCard, undoReview } from "@/lib/cards.functions";
+import { reviewCard, undoReview, postponeCard } from "@/lib/cards.functions";
 import { Input } from "@/components/ui/input";
 import { compareAnswer, type DiffPart } from "@/lib/answer-diff";
 
@@ -56,6 +62,7 @@ export function ReviewSession({
   const [typedAnswer, setTypedAnswer] = useState("");
   const typeInputRef = useRef<HTMLInputElement>(null);
   const undo = useServerFn(undoReview);
+  const postpone = useServerFn(postponeCard);
   // Which card the last grading applied to, so undo knows what to roll back
   // even though `index` has already moved on.
   const [lastGraded, setLastGraded] = useState<{
@@ -94,6 +101,26 @@ export function ReviewSession({
         {part.text}
       </span>
     ));
+  }
+
+  /** Push the current card out N days and move on without grading it. */
+  async function handlePostpone(days: number) {
+    if (!current || loading) return;
+    setLoading(true);
+    try {
+      await postpone({ data: { id: current.id, days } });
+      void qc.invalidateQueries({ queryKey: ["cards"] });
+      setRevealed(false);
+      setTypedAnswer("");
+      const next = index + 1;
+      setIndex(next);
+      if (next >= sessionCards.length) setFinished(true);
+      toast.success(`Card adiado por ${days} dia(s)`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleUndo() {
@@ -372,24 +399,34 @@ export function ReviewSession({
       <div className="relative max-h-full w-full max-w-3xl overflow-y-auto rounded-lg bg-card p-4 shadow-lg sm:p-6">
         <div className="flex flex-col items-stretch gap-6">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={onExit}>
-              <X className="size-4" /> Sair
-            </Button>
-            {lastGraded && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={loading}
-                onClick={() => void handleUndo()}
-              >
-                <Undo2 className="size-4" /> Desfazer
-              </Button>
-            )}
-            <Play className="hidden size-6 sm:block" />
-            <h2 className="hidden text-lg font-semibold sm:block">Sessão de Revisão</h2>
-            <div className="ml-auto text-sm text-muted-foreground">
+            <div className="text-sm font-medium text-muted-foreground">
               {index + 1}/{sessionCards.length}
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="ml-auto size-8">
+                  <MoreVertical className="size-4" />
+                  <span className="sr-only">Opções da sessão</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={!lastGraded || loading}
+                  onSelect={() => void handleUndo()}
+                >
+                  <Undo2 className="mr-2 size-4" /> Desfazer
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(1)}>
+                  <CalendarClock className="mr-2 size-4" /> Adiar 1 dia
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(7)}>
+                  <CalendarClock className="mr-2 size-4" /> Adiar 7 dias
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onExit()}>
+                  <X className="mr-2 size-4" /> Sair da sessão
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="rounded-lg border border-border p-4 sm:p-6">
