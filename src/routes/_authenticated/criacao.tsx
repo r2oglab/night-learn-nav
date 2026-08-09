@@ -15,7 +15,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
-import { parseCsv, detectDelimiter, rowsToCards, type ParsedCardRow } from "@/lib/csv";
+import {
+  parseCsv,
+  detectDelimiter,
+  rowsToCards,
+  extractAnkiHeader,
+  type ParsedCardRow,
+} from "@/lib/csv";
 
 export const Route = createFileRoute("/_authenticated/criacao")({
   component: CriacaoPage,
@@ -77,6 +83,8 @@ function CriacaoPage() {
   const [csvDeckColumn, setCsvDeckColumn] = useState(false);
   const [csvRawRows, setCsvRawRows] = useState<string[][] | null>(null);
   const [csvFileName, setCsvFileName] = useState("");
+  const [csvTagsColumn, setCsvTagsColumn] = useState<number | null>(null);
+  const [csvUseTagsAsDeck, setCsvUseTagsAsDeck] = useState(false);
   const [importing, setImporting] = useState(false);
   const runImport = useServerFn(importCards);
   const imageAreaRef = useRef<HTMLDivElement>(null);
@@ -183,24 +191,44 @@ function CriacaoPage() {
     hasHeader: boolean,
     deckColumn: boolean,
     deck: string,
+    tagsColumn?: number | null,
+    useTagsAsDeck?: boolean,
   ) {
     const { cards, skipped } = rowsToCards(rows, {
       hasHeader,
       defaultDeck: deck.trim() || "Importados",
       deckColumnFirst: deckColumn,
+      deckFromColumn:
+        (useTagsAsDeck ?? csvUseTagsAsDeck) && (tagsColumn ?? csvTagsColumn)
+          ? ((tagsColumn ?? csvTagsColumn) as number)
+          : undefined,
     });
     setCsvPreview(cards);
     setCsvSkipped(skipped);
   }
 
   async function handleCsvFile(file: File) {
-    const text = await file.text();
-    const delimiter = detectDelimiter(text);
-    const rows = parseCsv(text, delimiter);
+    const raw = await file.text();
+    // Anki writes its own metadata block ("#separator:", "#deck:", ...)
+    // above the data; honouring it means a straight Anki export needs no
+    // manual setup at all.
+    const { header, body } = extractAnkiHeader(raw);
+    const delimiter = header.separator ?? detectDelimiter(body);
+    const rows = parseCsv(body, delimiter);
     if (rows.length === 0) {
       toast.error("Arquivo vazio ou ilegível.");
       return;
     }
+
+    // The header's own deck name wins over whatever is currently typed.
+    let effectiveDeck = deckPath;
+    if (header.deck) {
+      effectiveDeck = header.deck;
+      setDeckPath(header.deck);
+    }
+    const tagsCol = header.tagsColumn ?? null;
+    setCsvTagsColumn(tagsCol);
+    setCsvUseTagsAsDeck(false);
     // Having 3 columns does NOT imply the first one is a deck: Anki's own
     // export is "Front, Back, Tags", where the third column is the tag and
     // the deck isn't in the file at all. Guessing "deck first" there shifts
@@ -213,7 +241,7 @@ function CriacaoPage() {
     setCsvRawRows(rows);
     setCsvFileName(file.name);
     setCsvDeckColumn(looksLikeDeckColumn);
-    recomputeCsvPreview(rows, csvHasHeader, looksLikeDeckColumn, deckPath);
+    recomputeCsvPreview(rows, csvHasHeader, looksLikeDeckColumn, effectiveDeck, tagsCol, false);
   }
 
   async function handleImportSubmit() {
@@ -231,6 +259,8 @@ function CriacaoPage() {
       setCsvRawRows(null);
       setCsvFileName("");
       setCsvSkipped(0);
+      setCsvTagsColumn(null);
+      setCsvUseTagsAsDeck(false);
     } catch (err: any) {
       toast.error(err?.message ?? String(err));
     } finally {
@@ -402,6 +432,8 @@ function CriacaoPage() {
                           csvHasHeader,
                           csvDeckColumn,
                           event.target.value,
+                          csvTagsColumn,
+                          csvUseTagsAsDeck,
                         );
                     }}
                     placeholder={cardType === "importar" ? "Importados" : "Ex: Biologia::Genética"}
@@ -471,6 +503,8 @@ function CriacaoPage() {
                               setCsvRawRows(null);
                               setCsvFileName("");
                               setCsvSkipped(0);
+                              setCsvTagsColumn(null);
+                              setCsvUseTagsAsDeck(false);
                             }}
                           >
                             Trocar arquivo
@@ -514,6 +548,27 @@ function CriacaoPage() {
                             />
                             <span className="text-muted-foreground">Primeira coluna é o deck</span>
                           </label>
+                          {csvTagsColumn && (
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={csvUseTagsAsDeck}
+                                onChange={(e) => {
+                                  setCsvUseTagsAsDeck(e.target.checked);
+                                  if (csvRawRows)
+                                    recomputeCsvPreview(
+                                      csvRawRows,
+                                      csvHasHeader,
+                                      csvDeckColumn,
+                                      deckPath,
+                                      csvTagsColumn,
+                                      e.target.checked,
+                                    );
+                                }}
+                              />
+                              <span className="text-muted-foreground">Usar tags como subdecks</span>
+                            </label>
+                          )}
                         </div>
 
                         {csvPreview.length > 0 && (
