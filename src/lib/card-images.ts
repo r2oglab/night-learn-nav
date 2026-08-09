@@ -27,7 +27,7 @@ export function storagePathFromPublicUrl(url: string | null | undefined): string
  * already succeeded — look like it failed to the user.
  */
 export async function cleanupOrphanedCardImages(
-  supabase: any,
+  supabase: { from: (t: string) => any; storage: { from: (b: string) => { remove: (paths: string[]) => Promise<unknown> } } }
   imageUrls: (string | null | undefined)[],
 ): Promise<void> {
   const uniqueUrls = [...new Set(imageUrls.filter((u): u is string => !!u))];
