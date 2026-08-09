@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { buildDeckTree, type DeckRow } from "./deck-tree";
+import { cleanupOrphanedCardImages } from "@/lib/card-images";
 
 export const listDecks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -88,8 +89,34 @@ export const deleteDeck = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string }) => input)
   .handler(async ({ data, context }) => {
+    // Deleting a deck cascades to its subdecks and all their cards, so the
+    // image URLs have to be read BEFORE the delete — afterwards those rows
+    // are gone and there's nothing left to look up.
+    const { data: allDecks } = await context.supabase.from("decks").select("id,parent_id");
+
+    const descendantIds: string[] = [];
+    const collect = (parentId: string) => {
+      descendantIds.push(parentId);
+      for (const d of allDecks ?? []) {
+        if (d.parent_id === parentId) collect(d.id);
+      }
+    };
+    collect(data.id);
+
+    const { data: doomedCards } = await context.supabase
+      .from("cards")
+      .select("image_url")
+      .in("deck_id", descendantIds)
+      .not("image_url", "is", null);
+
     const { error } = await context.supabase.from("decks").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
+
+    await cleanupOrphanedCardImages(
+      context.supabase,
+      (doomedCards ?? []).map((c: { image_url: string | null }) => c.image_url),
+    );
+
     return { ok: true };
   });
 

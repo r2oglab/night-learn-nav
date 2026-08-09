@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { newCardFields, reviewCard as reviewCardFsrs, type CardRow } from "@/lib/fsrs";
+import { cleanupOrphanedCardImages } from "@/lib/card-images";
 
 export const listCards = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -183,6 +184,11 @@ export const deleteCard = createServerFn({ method: "POST" })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+
+    // Occlusion images are shared by every card cut from the same picture,
+    // so this only removes the file once no card references it anymore.
+    await cleanupOrphanedCardImages(context.supabase, [deleted?.image_url]);
+
     return deleted;
   });
 
