@@ -357,6 +357,7 @@ export function ReviewSession({
             ) : (
               <div className="grid w-full grid-cols-2 gap-2 sm:flex">
                 <Button
+                  className="h-12 w-full sm:h-9 sm:w-auto"
                   disabled={loading}
                   onClick={() => void handleRating(Rating.Again)}
                   variant="destructive"
@@ -364,21 +365,21 @@ export function ReviewSession({
                   Errei
                 </Button>
                 <Button
-                  className="h-12 sm:h-10 sm:flex-1"
+                  className="h-12 w-full sm:h-9 sm:w-auto"
                   disabled={loading}
                   onClick={() => void handleRating(Rating.Hard)}
                 >
                   Difícil
                 </Button>
                 <Button
-                  className="h-12 sm:h-10 sm:flex-1"
+                  className="h-12 w-full sm:h-9 sm:w-auto"
                   disabled={loading}
                   onClick={() => void handleRating(Rating.Good)}
                 >
                   Bom
                 </Button>
                 <Button
-                  className="h-12 sm:h-10 sm:flex-1"
+                  className="h-12 w-full sm:h-9 sm:w-auto"
                   disabled={loading}
                   onClick={() => void handleRating(Rating.Easy)}
                 >

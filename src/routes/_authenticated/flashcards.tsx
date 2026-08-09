@@ -194,7 +194,11 @@ function FlashcardsPage() {
     return ids;
   };
 
-  function TreeNode({ deck, level = 0 }: { deck: any; level?: number }) {
+  // Rendered as a plain function call, not <TreeNode/>: this closure is
+  // recreated on every render of FlashcardsPage, so as a JSX element React
+  // would treat each render as a *different* component type and remount the
+  // whole subtree — which blew away input focus on every keystroke.
+  function renderTreeNode(deck: any, level = 0) {
     const children = childrenMap[deck.id] ?? [];
     const isOpen = !!openIds[deck.id];
     const deckCards = cards.filter((c: any) => c.deck_id === deck.id);
@@ -389,7 +393,7 @@ function FlashcardsPage() {
         {children.length > 0 && isOpen && (
           <div className="mt-3 space-y-3 pl-6">
             {children.map((child) => (
-              <TreeNode key={child.id} deck={child} level={level + 1} />
+              <div key={child.id}>{renderTreeNode(child, level + 1)}</div>
             ))}
           </div>
         )}
@@ -446,7 +450,7 @@ function FlashcardsPage() {
               ) : (
                 <div className="space-y-4">
                   {roots.map((root) => (
-                    <TreeNode key={root.id} deck={root} />
+                    <div key={root.id}>{renderTreeNode(root)}</div>
                   ))}
                 </div>
               )}
