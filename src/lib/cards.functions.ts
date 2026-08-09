@@ -130,9 +130,22 @@ export const reviewCard = createServerFn({ method: "POST" })
     const desiredRetention = settings?.desired_retention ?? 0.9;
     const fields = reviewCardFsrs(card as CardRow, data.rating, now, desiredRetention);
 
+    // Snapshot the pre-grading FSRS fields so a mis-tap can be undone.
+    const prevState = {
+      due: card.due,
+      stability: card.stability,
+      difficulty: card.difficulty,
+      elapsed_days: card.elapsed_days,
+      scheduled_days: card.scheduled_days,
+      reps: card.reps,
+      lapses: card.lapses,
+      state: card.state,
+      last_review: card.last_review,
+    };
+
     const { data: updated, error: updateError } = await context.supabase
       .from("cards")
-      .update(fields)
+      .update({ ...fields, prev_state: prevState })
       .eq("id", data.id)
       .select("*")
       .single();
@@ -445,4 +458,89 @@ export const updateImageOcclusion = createServerFn({ method: "POST" })
     }
 
     return { updated: data.regions.length, removed: toDelete.length, added: newRegions.length };
+  });
+
+/**
+ * Roll a card back to the FSRS state it had before its last grading.
+ *
+ * Only one level deep: `prev_state` is overwritten on every review, which
+ * covers the case this exists for — hitting the wrong button and noticing
+ * immediately. Undoing twice in a row is refused rather than silently
+ * restoring the same snapshot again.
+ */
+export const undoReview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string }) => {
+    if (!input.id?.trim()) throw new Error("Card inválido.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const { data: card, error } = await context.supabase
+      .from("cards")
+      .select("*")
+      .eq("id", data.id)
+      .single();
+    if (error || !card) throw new Error(error?.message ?? "Card não encontrado.");
+    if (!card.prev_state) throw new Error("Não há avaliação para desfazer neste card.");
+
+    const prev = card.prev_state as Record<string, unknown>;
+    const { data: restored, error: updateError } = await context.supabase
+      .from("cards")
+      .update({ ...prev, prev_state: null })
+      .eq("id", data.id)
+      .select("*")
+      .single();
+    if (updateError) throw new Error(updateError.message);
+    return restored;
+  });
+
+/**
+ * Push a card's due date out by N days, counted from today rather than from
+ * its current due date — a card three weeks overdue should land N days from
+ * now, not N days after a date already in the past.
+ */
+export const postponeCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; days: number }) => {
+    if (!input.id?.trim()) throw new Error("Card inválido.");
+    const days = Math.round(input.days);
+    if (!Number.isFinite(days) || days < 1 || days > 3650)
+      throw new Error("Informe de 1 a 3650 dias.");
+    return { id: input.id, days };
+  })
+  .handler(async ({ data, context }) => {
+    const target = new Date();
+    target.setDate(target.getDate() + data.days);
+    const due = target.toISOString().slice(0, 10);
+
+    const { data: updated, error } = await context.supabase
+      .from("cards")
+      .update({ due })
+      .eq("id", data.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
+  });
+
+/**
+ * Suspend or unsuspend a card. Suspended cards keep their scheduling but
+ * are skipped by the review queue, which is the point: park a card that
+ * needs fixing without losing its history.
+ */
+export const setCardSuspended = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; suspended: boolean }) => {
+    if (!input.id?.trim()) throw new Error("Card inválido.");
+    return { id: input.id, suspended: !!input.suspended };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: updated, error } = await context.supabase
+      .from("cards")
+      .update({ suspended: data.suspended })
+      .eq("id", data.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
   });

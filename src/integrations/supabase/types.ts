@@ -30,6 +30,8 @@ export type Database = {
           occlusion_regions: Json | null;
           occlusion_target_id: string | null;
           card_type: string | null;
+          prev_state: Json | null;
+          suspended: boolean;
         };
         Insert: {
           created_at?: string;
@@ -52,6 +54,8 @@ export type Database = {
           occlusion_regions?: Json | null;
           occlusion_target_id?: string | null;
           card_type?: string | null;
+          prev_state?: Json | null;
+          suspended?: boolean;
         };
         Update: {
           created_at?: string;
@@ -74,6 +78,8 @@ export type Database = {
           occlusion_regions?: Json | null;
           occlusion_target_id?: string | null;
           card_type?: string | null;
+          prev_state?: Json | null;
+          suspended?: boolean;
         };
         Relationships: [
           {

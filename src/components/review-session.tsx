@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { X, Play } from "lucide-react";
+import { X, Play, Undo2 } from "lucide-react";
 import { Rating } from "ts-fsrs";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { reviewCard } from "@/lib/cards.functions";
+import { reviewCard, undoReview } from "@/lib/cards.functions";
 import { Input } from "@/components/ui/input";
 import { compareAnswer, type DiffPart } from "@/lib/answer-diff";
 
@@ -55,6 +55,15 @@ export function ReviewSession({
   const gradingRef = useRef(false);
   const [typedAnswer, setTypedAnswer] = useState("");
   const typeInputRef = useRef<HTMLInputElement>(null);
+  const undo = useServerFn(undoReview);
+  // Which card the last grading applied to, so undo knows what to roll back
+  // even though `index` has already moved on.
+  const [lastGraded, setLastGraded] = useState<{
+    id: string;
+    deckName: string;
+    subdeckName: string;
+    wasCorrect: boolean;
+  } | null>(null);
   const grade = useServerFn(reviewCard);
   const qc = useQueryClient();
 
@@ -85,6 +94,48 @@ export function ReviewSession({
         {part.text}
       </span>
     ));
+  }
+
+  async function handleUndo() {
+    if (!lastGraded || loading) return;
+    setLoading(true);
+    try {
+      await undo({ data: { id: lastGraded.id } });
+
+      // Reverse the tally too, or the end-of-session summary would still
+      // count a review the user just took back.
+      const dec = (t: DeckTally) => ({
+        correct: t.correct - (lastGraded.wasCorrect ? 1 : 0),
+        incorrect: t.incorrect - (lastGraded.wasCorrect ? 0 : 1),
+      });
+      setTally((prev) => {
+        const entry = prev[lastGraded.deckName];
+        if (!entry) return prev;
+        return { ...prev, [lastGraded.deckName]: dec(entry) };
+      });
+      setSubdeckTally((prev) => {
+        const root = prev[lastGraded.deckName];
+        const entry = root?.[lastGraded.subdeckName];
+        if (!root || !entry) return prev;
+        return {
+          ...prev,
+          [lastGraded.deckName]: { ...root, [lastGraded.subdeckName]: dec(entry) },
+        };
+      });
+
+      void qc.invalidateQueries({ queryKey: ["cards"] });
+      // Step back to the card that was just graded and reset its answer UI.
+      setIndex((i) => Math.max(0, i - 1));
+      setFinished(false);
+      setRevealed(false);
+      setTypedAnswer("");
+      setLastGraded(null);
+      toast.success("Avaliação desfeita");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleRating(rating: number) {
@@ -129,6 +180,7 @@ export function ReviewSession({
         };
       });
 
+      setLastGraded({ id: current.id, deckName, subdeckName, wasCorrect: isCorrect });
       setRevealed(false);
       setTypedAnswer("");
       const next = index + 1;
@@ -323,6 +375,16 @@ export function ReviewSession({
             <Button variant="ghost" size="sm" onClick={onExit}>
               <X className="size-4" /> Sair
             </Button>
+            {lastGraded && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={loading}
+                onClick={() => void handleUndo()}
+              >
+                <Undo2 className="size-4" /> Desfazer
+              </Button>
+            )}
             <Play className="hidden size-6 sm:block" />
             <h2 className="hidden text-lg font-semibold sm:block">Sessão de Revisão</h2>
             <div className="ml-auto text-sm text-muted-foreground">

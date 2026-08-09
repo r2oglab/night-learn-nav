@@ -11,7 +11,14 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { listDecks, deleteDeck, updateDeck } from "@/lib/decks.functions";
-import { listCards, deleteCard, updateCard, updateImageOcclusion } from "@/lib/cards.functions";
+import {
+  listCards,
+  deleteCard,
+  updateCard,
+  updateImageOcclusion,
+  postponeCard,
+  setCardSuspended,
+} from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 import {
@@ -32,6 +39,26 @@ function FlashcardsPage() {
   const fetchDecks = useServerFn(listDecks);
   const fetchCards = useServerFn(listCards);
   const removeCard = useServerFn(deleteCard);
+  const postponeServer = useServerFn(postponeCard);
+  const suspendServer = useServerFn(setCardSuspended);
+
+  const postponeMutation = useMutation({
+    mutationFn: (vars: { id: string; days: number }) => postponeServer({ data: vars }),
+    onSuccess: (_d, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success(`Card adiado por ${vars.days} dia(s)`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const suspendMutation = useMutation({
+    mutationFn: (vars: { id: string; suspended: boolean }) => suspendServer({ data: vars }),
+    onSuccess: (_d, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success(vars.suspended ? "Card suspenso" : "Card reativado");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   const { data: decks = [], isLoading: decksLoading } = useQuery({
     queryKey: ["decks"],
@@ -337,7 +364,12 @@ function FlashcardsPage() {
                     </div>
                   ) : (
                     <>
-                      <div>
+                      <div className={card.suspended ? "opacity-50" : undefined}>
+                        {card.suspended && (
+                          <span className="mb-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                            Suspenso
+                          </span>
+                        )}
                         {isClozeText(card.pergunta) ? (
                           <>
                             <p className="font-medium">{maskCloze(card.pergunta)}</p>
@@ -371,6 +403,29 @@ function FlashcardsPage() {
                             Editar
                           </button>
                         )}
+                        <button
+                          className="text-muted-foreground underline hover:text-foreground"
+                          onClick={() => {
+                            const input = window.prompt("Adiar por quantos dias?", "1");
+                            if (input === null) return;
+                            const days = Number(input);
+                            if (!Number.isFinite(days) || days < 1) {
+                              toast.error("Informe um número de dias válido.");
+                              return;
+                            }
+                            postponeMutation.mutate({ id: card.id, days: Math.round(days) });
+                          }}
+                        >
+                          Adiar
+                        </button>
+                        <button
+                          className="text-muted-foreground underline hover:text-foreground"
+                          onClick={() =>
+                            suspendMutation.mutate({ id: card.id, suspended: !card.suspended })
+                          }
+                        >
+                          {card.suspended ? "Reativar" : "Suspender"}
+                        </button>
                         <button
                           className="text-destructive underline hover:text-destructive/80 disabled:opacity-50"
                           disabled={delMutation.isPending}
