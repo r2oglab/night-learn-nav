@@ -61,6 +61,7 @@ export const createCard = createServerFn({ method: "POST" })
       resposta?: string;
       invert?: boolean;
       cloze?: boolean;
+      typeIn?: boolean;
     }) => {
       const deckId = input.deck_id?.trim();
       const pergunta = input.pergunta?.trim();
@@ -70,7 +71,7 @@ export const createCard = createServerFn({ method: "POST" })
       if (!deckId) throw new Error("Informe o deck do card.");
       if (!pergunta) throw new Error("Informe a pergunta do card.");
       if (!cloze && !resposta) throw new Error("Informe a resposta do card.");
-      return { deck_id: deckId, pergunta, resposta, invert, cloze };
+      return { deck_id: deckId, pergunta, resposta, invert, cloze, typeIn: !!input.typeIn };
     },
   )
   .handler(async ({ data, context }) => {
@@ -81,6 +82,7 @@ export const createCard = createServerFn({ method: "POST" })
       deck_id: data.deck_id,
       pergunta: data.pergunta,
       resposta: data.cloze ? data.pergunta : data.resposta,
+      card_type: data.typeIn ? "digitar" : null,
       ...newCardFields(),
     });
 
@@ -253,8 +255,8 @@ export const createImageOcclusionCards = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
-  
-  /**
+
+/**
  * Bulk-create plain cards from an already-parsed CSV.
  *
  * Deck paths are resolved once per distinct path (not once per row), since

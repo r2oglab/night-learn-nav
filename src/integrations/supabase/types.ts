@@ -29,6 +29,7 @@ export type Database = {
           image_url: string | null;
           occlusion_regions: Json | null;
           occlusion_target_id: string | null;
+          card_type: string | null;
         };
         Insert: {
           created_at?: string;
@@ -50,6 +51,7 @@ export type Database = {
           image_url?: string | null;
           occlusion_regions?: Json | null;
           occlusion_target_id?: string | null;
+          card_type?: string | null;
         };
         Update: {
           created_at?: string;
@@ -71,6 +73,7 @@ export type Database = {
           image_url?: string | null;
           occlusion_regions?: Json | null;
           occlusion_target_id?: string | null;
+          card_type?: string | null;
         };
         Relationships: [
           {
@@ -155,6 +158,8 @@ export type Database = {
           daily_goal: number;
           desired_retention: number;
           last_review_date: string | null;
+          display_name: string | null;
+          avatar_url: string | null;
           streak: number;
           user_id: string;
         };
@@ -163,6 +168,8 @@ export type Database = {
           daily_goal?: number;
           desired_retention?: number;
           last_review_date?: string | null;
+          display_name?: string | null;
+          avatar_url?: string | null;
           streak?: number;
           user_id: string;
         };
@@ -171,6 +178,8 @@ export type Database = {
           daily_goal?: number;
           desired_retention?: number;
           last_review_date?: string | null;
+          display_name?: string | null;
+          avatar_url?: string | null;
           streak?: number;
           user_id?: string;
         };

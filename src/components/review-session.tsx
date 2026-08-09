@@ -7,6 +7,8 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { reviewCard } from "@/lib/cards.functions";
+import { Input } from "@/components/ui/input";
+import { compareAnswer, type DiffPart } from "@/lib/answer-diff";
 
 export type OcclusionRegion = {
   id: string;
@@ -27,6 +29,7 @@ type Card = {
   image_url?: string | null;
   occlusion_regions?: OcclusionRegion[] | null;
   occlusion_target_id?: string | null;
+  card_type?: string | null;
 };
 
 type DeckTally = { correct: number; incorrect: number };
@@ -50,6 +53,8 @@ export function ReviewSession({
   const [subdeckTally, setSubdeckTally] = useState<Record<string, Record<string, DeckTally>>>({});
   const [sessionCards] = useState(() => cards);
   const gradingRef = useRef(false);
+  const [typedAnswer, setTypedAnswer] = useState("");
+  const typeInputRef = useRef<HTMLInputElement>(null);
   const grade = useServerFn(reviewCard);
   const qc = useQueryClient();
 
@@ -60,6 +65,27 @@ export function ReviewSession({
     ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, "___")
     : (current?.pergunta ?? "");
   const clozeFull = isCloze ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, (_, g) => g) : null;
+
+  const isTypeIn = current?.card_type === "digitar";
+  const comparison =
+    isTypeIn && revealed ? compareAnswer(typedAnswer, current?.resposta ?? "") : null;
+
+  function renderDiff(parts: DiffPart[]) {
+    return parts.map((part, i) => (
+      <span
+        key={i}
+        className={
+          part.kind === "ok"
+            ? "text-emerald-400"
+            : part.kind === "missing"
+              ? "rounded bg-amber-500/30 text-amber-300 underline"
+              : "rounded bg-red-500/30 text-red-300 line-through"
+        }
+      >
+        {part.text}
+      </span>
+    ));
+  }
 
   async function handleRating(rating: number) {
     if (!current) return;
@@ -104,6 +130,7 @@ export function ReviewSession({
       });
 
       setRevealed(false);
+      setTypedAnswer("");
       const next = index + 1;
       setIndex(next);
       if (next >= sessionCards.length) {
@@ -121,7 +148,8 @@ export function ReviewSession({
     function onKeyDown(e: KeyboardEvent) {
       if (finished || loading || !current) return;
       if (!revealed) {
-        if (e.code === "Space" || e.key === "Enter") {
+        // On type-in cards the answer box owns Space, so only Enter reveals.
+        if (e.key === "Enter" || (e.code === "Space" && current.card_type !== "digitar")) {
           e.preventDefault();
           setRevealed(true);
         }
@@ -337,12 +365,51 @@ export function ReviewSession({
                 <div className="mb-4 text-sm text-muted-foreground">Pergunta</div>
                 <div className="text-base">{maskedQuestion}</div>
 
+                {isTypeIn && (
+                  <div className="mt-4">
+                    <Input
+                      ref={typeInputRef}
+                      autoFocus
+                      value={typedAnswer}
+                      onChange={(e) => setTypedAnswer(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !revealed) {
+                          e.preventDefault();
+                          setRevealed(true);
+                        }
+                      }}
+                      disabled={revealed}
+                      placeholder="Digite a resposta e aperte Enter"
+                    />
+                  </div>
+                )}
+
                 {revealed && (
                   <div className="mt-6">
                     <div className="mb-2 text-sm text-muted-foreground">Resposta</div>
-                    <div className="text-base">
-                      {isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}
-                    </div>
+                    {comparison ? (
+                      <div className="grid gap-2 text-base">
+                        <div>
+                          <span className="mr-2 text-xs text-muted-foreground">Você digitou:</span>
+                          {typedAnswer.trim() === "" ? (
+                            <span className="text-muted-foreground">(nada)</span>
+                          ) : (
+                            renderDiff(comparison.typed)
+                          )}
+                        </div>
+                        <div>
+                          <span className="mr-2 text-xs text-muted-foreground">Correta:</span>
+                          {renderDiff(comparison.expected)}
+                        </div>
+                        {comparison.correct && (
+                          <div className="text-xs text-emerald-400">Resposta correta</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-base">
+                        {isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}
+                      </div>
+                    )}
                   </div>
                 )}
               </>

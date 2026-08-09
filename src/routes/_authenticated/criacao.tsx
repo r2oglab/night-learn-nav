@@ -28,7 +28,7 @@ export const Route = createFileRoute("/_authenticated/criacao")({
   component: CriacaoPage,
 });
 
-type CardType = "simples" | "invertido" | "cloze" | "oclusao" | "importar";
+type CardType = "simples" | "invertido" | "cloze" | "digitar" | "oclusao" | "importar";
 
 type DrawingRect = {
   startX: number;
@@ -51,6 +51,7 @@ function CriacaoPage() {
   const [cardType, setCardType] = useState<CardType>("simples");
   const invert = cardType === "invertido";
   const cloze = cardType === "cloze";
+  const typeIn = cardType === "digitar";
   const [clozeText, setClozeText] = useState("");
   const [hiddenTokens, setHiddenTokens] = useState<Set<number>>(new Set());
   const hasHiddenWord = hiddenTokens.size > 0;
@@ -96,6 +97,7 @@ function CriacaoPage() {
       resposta?: string;
       invert?: boolean;
       cloze?: boolean;
+      typeIn?: boolean;
     }) => addCard({ data: vars }),
     onSuccess: () => {
       setDeckPath("");
@@ -412,6 +414,7 @@ function CriacaoPage() {
                       resposta: answer.trim(),
                       invert,
                       cloze,
+                      typeIn,
                     });
                   } catch (err: any) {
                     toast.error(err?.message ?? String(err));
@@ -456,6 +459,10 @@ function CriacaoPage() {
                   <label className="flex items-center gap-2 text-sm">
                     <RadioGroupItem value="cloze" />
                     <span className="text-muted-foreground">Omissão de palavra (cloze)</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <RadioGroupItem value="digitar" />
+                    <span className="text-muted-foreground">Digitar a resposta</span>
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <RadioGroupItem value="oclusao" />
