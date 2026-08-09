@@ -279,7 +279,7 @@ function Index() {
               <div className="ml-auto" />
             </header>
 
-            <main className="flex flex-1 justify-center p-6">
+            <main className="flex flex-1 justify-center p-3 sm:p-6">
               <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
                 <div className="mb-4 flex items-center gap-3">
                   <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
@@ -333,7 +333,7 @@ function Index() {
                     <span className="text-xs underline">Revisar agora</span>
                   </Link>
                 )}
-                <div className="mb-4 grid grid-cols-[auto_160px] items-stretch gap-4 overflow-x-auto">
+                <div className="mb-4 flex flex-col items-stretch gap-4 overflow-x-auto sm:grid sm:grid-cols-[auto_160px]">
                   {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
                   <div className="inline-flex flex-col justify-center gap-1.5 justify-self-start rounded-xl border border-border bg-card p-3">
                     <div className="grid grid-cols-7 gap-1.5">
@@ -378,7 +378,7 @@ function Index() {
                   </div>
 
                   {/* Pie chart for today, in a card matching the main calendar's style */}
-                  <div className="flex w-[160px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card p-3">
+                  <div className="flex w-full shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card p-3 sm:w-[160px]">
                     {(() => {
                       const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
                       let done = 0;
@@ -447,7 +447,7 @@ function Index() {
                   </div>
                 </div>
 
-                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                <div className="overflow-x-auto rounded-xl border border-border bg-card">
                   <div className="grid grid-cols-7 border-b border-border">
                     {weekDays.map((d) => (
                       <div

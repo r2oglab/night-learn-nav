@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
+import { ClozeEditor, buildClozeText } from "@/components/cloze-editor";
 import {
   parseCsv,
   detectDelimiter,
@@ -52,7 +53,6 @@ function CriacaoPage() {
   const cloze = cardType === "cloze";
   const [clozeText, setClozeText] = useState("");
   const [hiddenTokens, setHiddenTokens] = useState<Set<number>>(new Set());
-  const clozeTokens = clozeText.split(/(\s+)/);
   const hasHiddenWord = hiddenTokens.size > 0;
 
   function toggleClozeToken(i: number) {
@@ -65,7 +65,7 @@ function CriacaoPage() {
   }
 
   function buildClozeQuestion(): string {
-    return clozeTokens.map((tok, i) => (hiddenTokens.has(i) ? `{{c::${tok}}}` : tok)).join("");
+    return buildClozeText(clozeText, hiddenTokens);
   }
 
   // Image occlusion state
@@ -351,7 +351,7 @@ function CriacaoPage() {
             <h1 className="text-sm font-medium">Criação</h1>
           </header>
 
-          <main className="flex flex-1 justify-center p-6">
+          <main className="flex flex-1 justify-center p-3 sm:p-6">
             <div className="w-full max-w-3xl">
               {editorOpen && occlusionImageUrl && (
                 <ImageOcclusionEditor
@@ -443,7 +443,7 @@ function CriacaoPage() {
                 <RadioGroup
                   value={cardType}
                   onValueChange={(v) => setCardType(v as CardType)}
-                  className="flex flex-wrap items-center gap-4"
+                  className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-4"
                 >
                   <label className="flex items-center gap-2 text-sm">
                     <RadioGroupItem value="simples" />
@@ -690,7 +690,7 @@ function CriacaoPage() {
                         {regions.length > 0 && (
                           <ul className="space-y-2">
                             {regions.map((r, i) => (
-                              <li key={r.id} className="flex items-center gap-2">
+                              <li key={r.id} className="flex flex-wrap items-center gap-2">
                                 <span className="w-16 shrink-0 text-xs text-muted-foreground">
                                   Área {i + 1}
                                 </span>
@@ -723,56 +723,15 @@ function CriacaoPage() {
                     )}
                   </div>
                 ) : cardType === "cloze" ? (
-                  <div className="grid gap-2">
-                    <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                      Frase
-                      <Input
-                        value={clozeText}
-                        onChange={(event) => {
-                          setClozeText(event.target.value);
-                          setHiddenTokens(new Set());
-                        }}
-                        placeholder="Ex: A capital da França é Paris"
-                      />
-                    </label>
-
-                    {clozeText.trim() !== "" && (
-                      <>
-                        <p className="text-xs text-muted-foreground">
-                          Clique nas palavras que quer esconder:
-                        </p>
-                        <p className="rounded-md border border-border p-3 text-sm leading-relaxed">
-                          {clozeTokens.map((tok, i) =>
-                            tok.trim() === "" ? (
-                              <span key={i}>{tok}</span>
-                            ) : (
-                              <span
-                                key={i}
-                                onClick={() => toggleClozeToken(i)}
-                                className={
-                                  hiddenTokens.has(i)
-                                    ? "cursor-pointer rounded bg-primary px-0.5 text-primary-foreground"
-                                    : "cursor-pointer rounded px-0.5 hover:bg-muted"
-                                }
-                              >
-                                {tok}
-                              </span>
-                            ),
-                          )}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Pré-visualização:{" "}
-                          <span className="text-foreground">
-                            {hasHiddenWord
-                              ? clozeTokens
-                                  .map((tok, i) => (hiddenTokens.has(i) ? "___" : tok))
-                                  .join("")
-                              : "(nenhuma palavra marcada ainda)"}
-                          </span>
-                        </p>
-                      </>
-                    )}
-                  </div>
+                  <ClozeEditor
+                    text={clozeText}
+                    hidden={hiddenTokens}
+                    onTextChange={(v) => {
+                      setClozeText(v);
+                      setHiddenTokens(new Set());
+                    }}
+                    onToggleToken={toggleClozeToken}
+                  />
                 ) : (
                   <div className="grid gap-3">
                     <label className="flex flex-col gap-2 text-sm text-muted-foreground">

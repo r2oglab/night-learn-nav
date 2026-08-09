@@ -14,6 +14,14 @@ import { listDecks, deleteDeck, updateDeck } from "@/lib/decks.functions";
 import { listCards, deleteCard, updateCard, updateImageOcclusion } from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
+import {
+  ClozeEditor,
+  isClozeText,
+  maskCloze,
+  revealCloze,
+  parseClozeText,
+  buildClozeText,
+} from "@/components/cloze-editor";
 
 export const Route = createFileRoute("/_authenticated/flashcards")({
   component: FlashcardsPage,
@@ -38,6 +46,27 @@ function FlashcardsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingQuestion, setEditingQuestion] = useState("");
   const [editingAnswer, setEditingAnswer] = useState("");
+  // A cloze card being edited is reopened in the same click-the-words UI it
+  // was created with, rather than exposing raw {{c::}} markers.
+  const [editingIsCloze, setEditingIsCloze] = useState(false);
+  const [editingClozeText, setEditingClozeText] = useState("");
+  const [editingClozeHidden, setEditingClozeHidden] = useState<Set<number>>(new Set());
+
+  function startEditingCard(card: any) {
+    setEditingId(card.id);
+    if (isClozeText(card.pergunta)) {
+      const { text, hidden } = parseClozeText(card.pergunta);
+      setEditingIsCloze(true);
+      setEditingClozeText(text);
+      setEditingClozeHidden(hidden);
+      setEditingQuestion("");
+      setEditingAnswer("");
+    } else {
+      setEditingIsCloze(false);
+      setEditingQuestion(card.pergunta);
+      setEditingAnswer(card.resposta);
+    }
+  }
 
   const delMutation = useMutation({
     mutationFn: (id: string) => removeCard({ data: { id } }),
@@ -176,7 +205,7 @@ function FlashcardsPage() {
 
     return (
       <section key={deck.id} className="rounded-xl border border-border bg-card p-3">
-        <div className="mb-2 flex items-center gap-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2 sm:gap-3">
           <Button size="sm" variant="ghost" onClick={() => toggle(deck.id)}>
             {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
@@ -235,30 +264,65 @@ function FlashcardsPage() {
           ) : (
             <ul className="space-y-3">
               {deckCards.map((card: any) => (
-                <li key={card.id} className="flex items-start justify-between gap-4">
+                <li
+                  key={card.id}
+                  className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                >
                   {editingId === card.id ? (
                     <div className="flex-1">
-                      <label className="flex flex-col gap-2">
-                        <Input
-                          value={editingQuestion}
-                          onChange={(e) => setEditingQuestion(e.target.value)}
+                      {editingIsCloze ? (
+                        <ClozeEditor
+                          text={editingClozeText}
+                          hidden={editingClozeHidden}
+                          onTextChange={(v) => {
+                            setEditingClozeText(v);
+                            setEditingClozeHidden(new Set());
+                          }}
+                          onToggleToken={(i) =>
+                            setEditingClozeHidden((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(i)) next.delete(i);
+                              else next.add(i);
+                              return next;
+                            })
+                          }
                         />
-                        <Input
-                          value={editingAnswer}
-                          onChange={(e) => setEditingAnswer(e.target.value)}
-                        />
-                      </label>
+                      ) : (
+                        <label className="flex flex-col gap-2">
+                          <Input
+                            value={editingQuestion}
+                            onChange={(e) => setEditingQuestion(e.target.value)}
+                          />
+                          <Input
+                            value={editingAnswer}
+                            onChange={(e) => setEditingAnswer(e.target.value)}
+                          />
+                        </label>
+                      )}
                       <div className="mt-2 flex gap-2">
                         <Button
                           size="sm"
-                          disabled={updateMutation.isPending}
-                          onClick={() =>
-                            updateMutation.mutate({
-                              id: card.id,
-                              pergunta: editingQuestion,
-                              resposta: editingAnswer,
-                            })
+                          disabled={
+                            updateMutation.isPending ||
+                            (editingIsCloze &&
+                              (!editingClozeText.trim() || editingClozeHidden.size === 0))
                           }
+                          onClick={() => {
+                            if (editingIsCloze) {
+                              const stored = buildClozeText(editingClozeText, editingClozeHidden);
+                              updateMutation.mutate({
+                                id: card.id,
+                                pergunta: stored,
+                                resposta: stored,
+                              });
+                            } else {
+                              updateMutation.mutate({
+                                id: card.id,
+                                pergunta: editingQuestion,
+                                resposta: editingAnswer,
+                              });
+                            }
+                          }}
                         >
                           Salvar
                         </Button>
@@ -270,16 +334,11 @@ function FlashcardsPage() {
                   ) : (
                     <>
                       <div>
-                        {/\{\{c::(.*?)\}\}/.test(card.pergunta) ? (
+                        {isClozeText(card.pergunta) ? (
                           <>
-                            <p className="font-medium">
-                              {card.pergunta.replace(/\{\{c::(.*?)\}\}/g, "___")}
-                            </p>
+                            <p className="font-medium">{maskCloze(card.pergunta)}</p>
                             <p className="text-sm text-muted-foreground">
-                              {card.pergunta.replace(
-                                /\{\{c::(.*?)\}\}/g,
-                                (_: string, g: string) => g,
-                              )}
+                              {revealCloze(card.pergunta)}
                             </p>
                           </>
                         ) : (
@@ -303,11 +362,7 @@ function FlashcardsPage() {
                         ) : (
                           <button
                             className="text-muted-foreground underline hover:text-foreground"
-                            onClick={() => {
-                              setEditingId(card.id);
-                              setEditingQuestion(card.pergunta);
-                              setEditingAnswer(card.resposta);
-                            }}
+                            onClick={() => startEditingCard(card)}
                           >
                             Editar
                           </button>
@@ -355,7 +410,7 @@ function FlashcardsPage() {
             <h1 className="text-sm font-medium">Flashcards</h1>
           </header>
 
-          <main className="flex flex-1 justify-center p-6">
+          <main className="flex flex-1 justify-center p-3 sm:p-6">
             <div className="w-full max-w-3xl">
               {occlusionCard && (
                 <ImageOcclusionEditor

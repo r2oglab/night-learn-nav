@@ -157,7 +157,7 @@ function RevisoesPage() {
             </div>
           </header>
 
-          <main className="flex flex-1 justify-center p-6">
+          <main className="flex flex-1 justify-center p-3 sm:p-6">
             <div className="w-full max-w-3xl">
               {showSession && (
                 <div className="fixed inset-0 z-50">

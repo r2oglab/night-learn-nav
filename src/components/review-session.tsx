@@ -177,7 +177,7 @@ export function ReviewSession({
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-4">
-        <div className="w-full max-w-2xl rounded-lg bg-card p-6 shadow-lg">
+        <div className="w-full max-w-2xl rounded-lg bg-card p-4 shadow-lg sm:p-6">
           <h2 className="text-lg font-semibold">Sessão finalizada</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {totalCorrect}/{totalCards} acertos no total
@@ -288,21 +288,21 @@ export function ReviewSession({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div className="relative w-full max-w-3xl rounded-lg bg-card p-6 shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-2 sm:p-4">
+      <div className="relative max-h-full w-full max-w-3xl overflow-y-auto rounded-lg bg-card p-4 shadow-lg sm:p-6">
         <div className="flex flex-col items-stretch gap-6">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={onExit}>
               <X className="size-4" /> Sair
             </Button>
-            <Play className="size-6" />
-            <h2 className="text-lg font-semibold">Sessão de Revisão</h2>
+            <Play className="hidden size-6 sm:block" />
+            <h2 className="hidden text-lg font-semibold sm:block">Sessão de Revisão</h2>
             <div className="ml-auto text-sm text-muted-foreground">
               {index + 1}/{sessionCards.length}
             </div>
           </div>
 
-          <div className="rounded-lg border border-border p-6">
+          <div className="rounded-lg border border-border p-4 sm:p-6">
             {current?.image_url ? (
               <div className="mx-auto max-w-xl">
                 <div className="relative w-full overflow-hidden rounded-lg">
@@ -351,9 +351,11 @@ export function ReviewSession({
 
           <div className="flex items-center gap-3">
             {!revealed ? (
-              <Button onClick={() => setRevealed(true)}>Revelar resposta</Button>
+              <Button className="h-12 w-full sm:h-10 sm:w-auto" onClick={() => setRevealed(true)}>
+                Revelar resposta
+              </Button>
             ) : (
-              <div className="flex w-full gap-2">
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex">
                 <Button
                   disabled={loading}
                   onClick={() => void handleRating(Rating.Again)}
@@ -361,13 +363,25 @@ export function ReviewSession({
                 >
                   Errei
                 </Button>
-                <Button disabled={loading} onClick={() => void handleRating(Rating.Hard)}>
+                <Button
+                  className="h-12 sm:h-10 sm:flex-1"
+                  disabled={loading}
+                  onClick={() => void handleRating(Rating.Hard)}
+                >
                   Difícil
                 </Button>
-                <Button disabled={loading} onClick={() => void handleRating(Rating.Good)}>
+                <Button
+                  className="h-12 sm:h-10 sm:flex-1"
+                  disabled={loading}
+                  onClick={() => void handleRating(Rating.Good)}
+                >
                   Bom
                 </Button>
-                <Button disabled={loading} onClick={() => void handleRating(Rating.Easy)}>
+                <Button
+                  className="h-12 sm:h-10 sm:flex-1"
+                  disabled={loading}
+                  onClick={() => void handleRating(Rating.Easy)}
+                >
                   Fácil
                 </Button>
               </div>
