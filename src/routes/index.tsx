@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link  } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
@@ -38,7 +38,6 @@ type Review = { deck: string; statuses: Status[] };
 
 const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-
 const statusStyles: Record<Status, string> = {
   done: "bg-success/20 text-success border-success/30",
   overdue: "bg-overdue/20 text-overdue border-overdue/30",
@@ -68,11 +67,17 @@ function Index() {
   const dateReady = realNow !== null && viewYear !== null && viewMonth !== null;
 
   const monthLabel = dateReady
-    ? capitalizeFirst(new Date(viewYear!, viewMonth!, 1).toLocaleString("pt-BR", { month: "long", year: "numeric" }))
+    ? capitalizeFirst(
+        new Date(viewYear!, viewMonth!, 1).toLocaleString("pt-BR", {
+          month: "long",
+          year: "numeric",
+        }),
+      )
     : "";
   const daysInMonth = dateReady ? new Date(viewYear!, viewMonth! + 1, 0).getDate() : 0;
   const firstWeekday = dateReady ? new Date(viewYear!, viewMonth!, 1).getDay() : 0;
-  const isViewingCurrentMonth = dateReady && viewYear === realNow!.getFullYear() && viewMonth === realNow!.getMonth();
+  const isViewingCurrentMonth =
+    dateReady && viewYear === realNow!.getFullYear() && viewMonth === realNow!.getMonth();
   const today = isViewingCurrentMonth ? realNow!.getDate() : null;
 
   const fetchDecks = useServerFn(listDecks);
@@ -145,7 +150,11 @@ function Index() {
         const rootName = findRootName(row.deck_id, row.decks?.name ?? row.pergunta);
         grouped[day] = grouped[day] ?? new Map();
         const m = grouped[day];
-        const prev = m.get(rootName) ?? { deck: rootName, counts: { done: 0, overdue: 0, pending: 0 }, total: 0 };
+        const prev = m.get(rootName) ?? {
+          deck: rootName,
+          counts: { done: 0, overdue: 0, pending: 0 },
+          total: 0,
+        };
         prev.counts[status] = (prev.counts[status] ?? 0) + 1;
         prev.total += 1;
         m.set(rootName, prev);
@@ -158,7 +167,11 @@ function Index() {
         const rootName = findRootName(row.deck_id, row.decks?.name ?? row.pergunta);
         grouped[day] = grouped[day] ?? new Map();
         const m = grouped[day];
-        const prev = m.get(rootName) ?? { deck: rootName, counts: { done: 0, overdue: 0, pending: 0 }, total: 0 };
+        const prev = m.get(rootName) ?? {
+          deck: rootName,
+          counts: { done: 0, overdue: 0, pending: 0 },
+          total: 0,
+        };
         prev.counts["done"] = (prev.counts["done"] ?? 0) + 1;
         prev.total += 1;
         m.set(rootName, prev);
@@ -191,7 +204,9 @@ function Index() {
     enabled: !decksLoading && dateReady,
     retry: 2,
     queryFn: async () => {
-      const { rows, dailyGoal } = await fetchHeatmapData({ data: { start: heatStartISO, end: heatEndISO } });
+      const { rows, dailyGoal } = await fetchHeatmapData({
+        data: { start: heatStartISO, end: heatEndISO },
+      });
 
       const dayMap: Record<string, number> = {};
       for (let i = 0; i < 35; i++) {
@@ -250,253 +265,291 @@ function Index() {
     },
   });
 
-
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background text-foreground">
         <AppSidebar />
 
         {dateReady ? (
-        <div className="flex flex-1 flex-col">
-          <header className="flex h-14 items-center gap-3 border-b border-border px-4">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="h-5" />
-            <h1 className="text-sm font-medium">Dashboard</h1>
-            <div className="ml-auto" />
-          </header>
+          <div className="flex flex-1 flex-col">
+            <header className="flex h-14 items-center gap-3 border-b border-border px-4">
+              <SidebarTrigger />
+              <Separator orientation="vertical" className="h-5" />
+              <h1 className="text-sm font-medium">Dashboard</h1>
+              <div className="ml-auto" />
+            </header>
 
-
-          <main className="flex flex-1 justify-center p-6">
-            <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
-              <div className="mb-4 flex items-center gap-3">
-                <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
-                {isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-                <div className="ml-auto flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="size-8"
-                    onClick={() => {
-                      const d = new Date(viewYear!, viewMonth! - 1, 1);
-                      setViewYear(d.getFullYear());
-                      setViewMonth(d.getMonth());
-                    }}
-                  >
-                    <ChevronLeft className="size-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setViewYear(realNow!.getFullYear());
-                      setViewMonth(realNow!.getMonth());
-                    }}
-                  >
-                    Hoje
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="size-8"
-                    onClick={() => {
-                      const d = new Date(viewYear!, viewMonth! + 1, 1);
-                      setViewYear(d.getFullYear());
-                      setViewMonth(d.getMonth());
-                    }}
-                  >
-                    <ChevronRight className="size-4" />
-                  </Button>
+            <main className="flex flex-1 justify-center p-6">
+              <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
+                <div className="mb-4 flex items-center gap-3">
+                  <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
+                  {isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+                  <div className="ml-auto flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-8"
+                      onClick={() => {
+                        const d = new Date(viewYear!, viewMonth! - 1, 1);
+                        setViewYear(d.getFullYear());
+                        setViewMonth(d.getMonth());
+                      }}
+                    >
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setViewYear(realNow!.getFullYear());
+                        setViewMonth(realNow!.getMonth());
+                      }}
+                    >
+                      Hoje
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="size-8"
+                      onClick={() => {
+                        const d = new Date(viewYear!, viewMonth! + 1, 1);
+                        setViewYear(d.getFullYear());
+                        setViewMonth(d.getMonth());
+                      }}
+                    >
+                      <ChevronRight className="size-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              {overdueCount > 0 && (
-                <Link
-                  to="/revisoes"
-                  className="mb-4 flex items-center justify-between rounded-xl border border-overdue/30 bg-overdue/10 px-4 py-3 text-sm text-overdue transition-colors hover:bg-overdue/20"
-                >
-                  <span className="font-medium">
-                    {overdueCount} card{overdueCount === 1 ? "" : "s"} atrasado{overdueCount === 1 ? "" : "s"}
-                  </span>
-                  <span className="text-xs underline">Revisar agora</span>
-                </Link>
-              )}
-              <div className="mb-4 grid grid-cols-[auto_160px] items-stretch gap-4 overflow-x-auto">
-             {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
-                <div className="inline-flex flex-col justify-center gap-1.5 justify-self-start rounded-xl border border-border bg-card p-3">
-                  <div className="grid grid-cols-7 gap-1.5">
+                {overdueCount > 0 && (
+                  <Link
+                    to="/revisoes"
+                    className="mb-4 flex items-center justify-between rounded-xl border border-overdue/30 bg-overdue/10 px-4 py-3 text-sm text-overdue transition-colors hover:bg-overdue/20"
+                  >
+                    <span className="font-medium">
+                      {overdueCount} card{overdueCount === 1 ? "" : "s"} atrasado
+                      {overdueCount === 1 ? "" : "s"}
+                    </span>
+                    <span className="text-xs underline">Revisar agora</span>
+                  </Link>
+                )}
+                <div className="mb-4 grid grid-cols-[auto_160px] items-stretch gap-4 overflow-x-auto">
+                  {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
+                  <div className="inline-flex flex-col justify-center gap-1.5 justify-self-start rounded-xl border border-border bg-card p-3">
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {weekDays.map((d) => (
+                        <div
+                          key={d}
+                          className="size-6 text-center text-[10px] font-medium uppercase leading-6 text-muted-foreground"
+                        >
+                          {d[0]}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {heatCells.map((cell, idx) => {
+                        if (!cell) return <div key={idx} className="size-6" />;
+                        const bucket =
+                          cell.pct >= 100
+                            ? 4
+                            : cell.pct >= 75
+                              ? 3
+                              : cell.pct >= 50
+                                ? 2
+                                : cell.pct >= 25
+                                  ? 1
+                                  : 0;
+                        const colors = [
+                          "bg-muted/30",
+                          "bg-emerald-100",
+                          "bg-emerald-300",
+                          "bg-emerald-500",
+                          "bg-emerald-700",
+                        ];
+                        return (
+                          <div
+                            key={idx}
+                            title={`${cell.pct}%`}
+                            className={`size-6 rounded ${colors[bucket]}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Pie chart for today, in a card matching the main calendar's style */}
+                  <div className="flex w-[160px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card p-3">
+                    {(() => {
+                      const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
+                      let done = 0;
+                      let pending = 0;
+                      for (const g of todayArr) {
+                        done += g.counts?.done ?? 0;
+                        pending += g.counts?.pending ?? 0;
+                      }
+                      const overdue = overdueCount;
+                      const total = done + overdue + pending;
+                      const r = 36;
+                      const circumference = 2 * Math.PI * r;
+                      const segments = [
+                        { value: done, color: "#10B981" },
+                        { value: overdue, color: "#F97316" },
+                        { value: pending, color: "#F59E0B" },
+                      ];
+                      let offset = 0;
+                      return (
+                        <svg width={100} height={100} viewBox="0 0 100 100">
+                          <circle
+                            cx={50}
+                            cy={50}
+                            r={r}
+                            fill="none"
+                            stroke="hsl(var(--muted))"
+                            strokeWidth={14}
+                          />
+                          {total > 0 &&
+                            segments.map((seg, i) => {
+                              if (seg.value === 0) return null;
+                              const dash = (seg.value / total) * circumference;
+                              const el = (
+                                <circle
+                                  key={i}
+                                  cx={50}
+                                  cy={50}
+                                  r={r}
+                                  fill="none"
+                                  stroke={seg.color}
+                                  strokeWidth={14}
+                                  strokeDasharray={`${dash} ${circumference - dash}`}
+                                  strokeDashoffset={-offset}
+                                  transform="rotate(-90 50 50)"
+                                />
+                              );
+                              offset += dash;
+                              return el;
+                            })}
+                        </svg>
+                      );
+                    })()}
+                    <div className="text-xs text-muted-foreground">
+                      {(() => {
+                        const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
+                        let done = 0;
+                        let pending = 0;
+                        for (const g of todayArr) {
+                          done += g.counts?.done ?? 0;
+                          pending += g.counts?.pending ?? 0;
+                        }
+                        const total = done + overdueCount + pending;
+                        return `${done}/${total}`;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                  <div className="grid grid-cols-7 border-b border-border">
                     {weekDays.map((d) => (
-                      <div key={d} className="size-6 text-center text-[10px] font-medium uppercase leading-6 text-muted-foreground">
-                        {d[0]}
+                      <div
+                        key={d}
+                        className="px-2 py-2 text-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+                      >
+                        {d}
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-7 gap-1.5">
-                    {heatCells.map((cell, idx) => {
-                      if (!cell) return <div key={idx} className="size-6" />;
-                      const bucket = cell.pct >= 100 ? 4 : cell.pct >= 75 ? 3 : cell.pct >= 50 ? 2 : cell.pct >= 25 ? 1 : 0;
-                      const colors = ["bg-muted/30", "bg-emerald-100", "bg-emerald-300", "bg-emerald-500", "bg-emerald-700"];
-                      return (
-                        <div key={idx} title={`${cell.pct}%`} className={`size-6 rounded ${colors[bucket]}`} />
-                      );
-                    })}
-                  </div>
-                </div>
 
-                {/* Pie chart for today, in a card matching the main calendar's style */}
-                <div className="flex w-[160px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card p-3">
-                  {(() => {
-                    const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
-                    let done = 0;
-                    let pending = 0;
-                    for (const g of todayArr) {
-                      done += g.counts?.done ?? 0;
-                      pending += g.counts?.pending ?? 0;
-                    }
-                    const overdue = overdueCount;
-                    const total = done + overdue + pending;
-                    const r = 36;
-                    const circumference = 2 * Math.PI * r;
-                    const segments = [
-                      { value: done, color: "#10B981" },
-                      { value: overdue, color: "#F97316" },
-                      { value: pending, color: "#F59E0B" },
-                    ];
-                    let offset = 0;
-                    return (
-                      <svg width={100} height={100} viewBox="0 0 100 100">
-                        <circle cx={50} cy={50} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={14} />
-                        {total > 0 &&
-                          segments.map((seg, i) => {
-                            if (seg.value === 0) return null;
-                            const dash = (seg.value / total) * circumference;
-                            const el = (
-                              <circle
-                                key={i}
-                                cx={50}
-                                cy={50}
-                                r={r}
-                                fill="none"
-                                stroke={seg.color}
-                                strokeWidth={14}
-                                strokeDasharray={`${dash} ${circumference - dash}`}
-                                strokeDashoffset={-offset}
-                                transform="rotate(-90 50 50)"
-                              />
-                            );
-                            offset += dash;
-                            return el;
-                          })}
-                      </svg>
-                    );
-                  })()}
-                  <div className="text-xs text-muted-foreground">{(() => {
-                    const todayArr = (reviewsByDay[today ?? -1] ?? []) as any[];
-                    let done = 0; let pending = 0;
-                    for (const g of todayArr) { done += g.counts?.done ?? 0; pending += g.counts?.pending ?? 0; }
-                    const total = done + overdueCount + pending;
-                    return `${done}/${total}`;
-                  })()}</div>
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-xl border border-border bg-card">
-                <div className="grid grid-cols-7 border-b border-border">
-                  {weekDays.map((d) => (
-                    <div
-                      key={d}
-                      className="px-2 py-2 text-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
-                    >
-                      {d}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7">
-                  {cells.map((day, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        "min-h-[120px] border-b border-r border-border p-1.5 last:border-r-0",
-                        (i + 1) % 7 === 0 && "border-r-0",
-                        day === null && "bg-muted/20",
-                      )}
-                    >
-                      {day !== null && (
-                        <>
-                          <div className="mb-1 flex justify-end">
-                            <span
-                              className={cn(
-                                "flex size-6 items-center justify-center rounded-full text-xs",
-                                day === today
-                                  ? "bg-primary font-semibold text-primary-foreground"
-                                  : "text-muted-foreground",
-                              )}
-                            >
-                              {day}
-                            </span>
-                          </div>
-                          <div className="space-y-1">
-                            {/* reviewsByDay[day] is an array of DayGroup {deck, total, counts} */}
-                            {((reviewsByDay[day] ?? []) as any[]).map((group, idx) => {
-                              // show only top 2; rest will be in 'Outros'
-                              if (idx < 2) {
-                                const status: Status =
-                                  group.counts?.overdue > 0
-                                    ? "overdue"
-                                    : group.counts?.done === group.total
-                                      ? "done"
-                                      : "pending";
+                  <div className="grid grid-cols-7">
+                    {cells.map((day, i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "min-h-[120px] border-b border-r border-border p-1.5 last:border-r-0",
+                          (i + 1) % 7 === 0 && "border-r-0",
+                          day === null && "bg-muted/20",
+                        )}
+                      >
+                        {day !== null && (
+                          <>
+                            <div className="mb-1 flex justify-end">
+                              <span
+                                className={cn(
+                                  "flex size-6 items-center justify-center rounded-full text-xs",
+                                  day === today
+                                    ? "bg-primary font-semibold text-primary-foreground"
+                                    : "text-muted-foreground",
+                                )}
+                              >
+                                {day}
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              {/* reviewsByDay[day] is an array of DayGroup {deck, total, counts} */}
+                              {((reviewsByDay[day] ?? []) as any[]).map((group, idx) => {
+                                // show only top 2; rest will be in 'Outros'
+                                if (idx < 2) {
+                                  const status: Status =
+                                    group.counts?.overdue > 0
+                                      ? "overdue"
+                                      : group.counts?.done === group.total
+                                        ? "done"
+                                        : "pending";
+                                  return (
+                                    <div
+                                      key={group.deck}
+                                      className={cn(
+                                        "truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
+                                        statusStyles[status],
+                                      )}
+                                    >
+                                      {group.deck} · {group.total}
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })}
+                              {(() => {
+                                const groups = (reviewsByDay[day] ?? []) as any[];
+                                if (!groups || groups.length <= 2) return null;
+                                const others = groups.slice(2);
+                                const otherCount = others.length;
+                                const title = others
+                                  .map((g) => `${g.deck} · ${g.total}`)
+                                  .join("\n");
                                 return (
-                                  <div
-                                    key={group.deck}
-                                    className={cn(
-                                      "truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-                                      statusStyles[status],
+                                  <div className="mt-1">
+                                    <button
+                                      className="text-[11px] text-muted-foreground underline"
+                                      title={title}
+                                      onClick={() =>
+                                        setShowOthersDay((s) => (s === day ? null : day))
+                                      }
+                                    >
+                                      Outros {otherCount}
+                                    </button>
+                                    {showOthersDay === day && (
+                                      <div className="mt-2 rounded border border-border bg-popover p-2 text-xs">
+                                        {others.map((g) => (
+                                          <div key={g.deck} className="flex justify-between">
+                                            <span>{g.deck}</span>
+                                            <span className="text-muted-foreground">{g.total}</span>
+                                          </div>
+                                        ))}
+                                      </div>
                                     )}
-                                  >
-                                    {group.deck} · {group.total}
                                   </div>
                                 );
-                              }
-                              return null;
-                            })}
-                            {(() => {
-                              const groups = (reviewsByDay[day] ?? []) as any[];
-                              if (!groups || groups.length <= 2) return null;
-                              const others = groups.slice(2);
-                              const otherCount = others.length;
-                              const title = others.map((g) => `${g.deck} · ${g.total}`).join("\n");
-                              return (
-                                <div className="mt-1">
-                                  <button
-                                    className="text-[11px] text-muted-foreground underline"
-                                    title={title}
-                                    onClick={() => setShowOthersDay((s) => (s === day ? null : day))}
-                                  >
-                                    Outros {otherCount}
-                                  </button>
-                                  {showOthersDay === day && (
-                                    <div className="mt-2 rounded border border-border bg-popover p-2 text-xs">
-                                      {others.map((g) => (
-                                        <div key={g.deck} className="flex justify-between">
-                                          <span>{g.deck}</span>
-                                          <span className="text-muted-foreground">{g.total}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
+                              })()}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          </main>
-        </div>
+            </main>
+          </div>
         ) : (
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />

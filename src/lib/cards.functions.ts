@@ -53,17 +53,25 @@ export const getHeatmapData = createServerFn({ method: "POST" })
 
 export const createCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { deck_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) => {
-    const deckId = input.deck_id?.trim();
-    const pergunta = input.pergunta?.trim();
-    const resposta = input.resposta?.trim();
-    const invert = !!input.invert;
-    const cloze = !!input.cloze;
-    if (!deckId) throw new Error("Informe o deck do card.");
-    if (!pergunta) throw new Error("Informe a pergunta do card.");
-    if (!cloze && !resposta) throw new Error("Informe a resposta do card.");
-    return { deck_id: deckId, pergunta, resposta, invert, cloze };
-  })
+  .inputValidator(
+    (input: {
+      deck_id: string;
+      pergunta: string;
+      resposta?: string;
+      invert?: boolean;
+      cloze?: boolean;
+    }) => {
+      const deckId = input.deck_id?.trim();
+      const pergunta = input.pergunta?.trim();
+      const resposta = input.resposta?.trim();
+      const invert = !!input.invert;
+      const cloze = !!input.cloze;
+      if (!deckId) throw new Error("Informe o deck do card.");
+      if (!pergunta) throw new Error("Informe a pergunta do card.");
+      if (!cloze && !resposta) throw new Error("Informe a resposta do card.");
+      return { deck_id: deckId, pergunta, resposta, invert, cloze };
+    },
+  )
   .handler(async ({ data, context }) => {
     // primary card
     const inserts: any[] = [];
@@ -86,10 +94,7 @@ export const createCard = createServerFn({ method: "POST" })
       });
     }
 
-    const { data: rows, error } = await context.supabase
-      .from("cards")
-      .insert(inserts)
-      .select("*");
+    const { data: rows, error } = await context.supabase.from("cards").insert(inserts).select("*");
     if (error) throw new Error(error.message);
 
     // return the first inserted row as primary
@@ -152,7 +157,10 @@ export const reviewCard = createServerFn({ method: "POST" })
 
       await context.supabase
         .from("user_settings")
-        .upsert({ user_id: context.userId, last_review_date: todayStr, streak: newStreak }, { onConflict: "user_id" });
+        .upsert(
+          { user_id: context.userId, last_review_date: todayStr, streak: newStreak },
+          { onConflict: "user_id" },
+        );
     } catch (e) {
       // non-fatal
       console.warn("Failed to update user_settings streak", e);
@@ -199,7 +207,14 @@ export const updateCard = createServerFn({ method: "POST" })
     return updated;
   });
 
-type OcclusionRegion = { id: string; x: number; y: number; width: number; height: number; label?: string | undefined };
+type OcclusionRegion = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string | undefined;
+};
 
 export const createImageOcclusionCards = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -208,7 +223,8 @@ export const createImageOcclusionCards = createServerFn({ method: "POST" })
     const imageUrl = input.image_url?.trim();
     if (!deckId) throw new Error("Informe o deck.");
     if (!imageUrl) throw new Error("Envie uma imagem.");
-    if (!input.regions || input.regions.length === 0) throw new Error("Desenhe pelo menos uma área de oclusão.");
+    if (!input.regions || input.regions.length === 0)
+      throw new Error("Desenhe pelo menos uma área de oclusão.");
     return { deck_id: deckId, image_url: imageUrl, regions: input.regions };
   })
   .handler(async ({ data, context }) => {
@@ -227,10 +243,7 @@ export const createImageOcclusionCards = createServerFn({ method: "POST" })
       ...newCardFields(),
     }));
 
-    const { data: rows, error } = await context.supabase
-      .from("cards")
-      .insert(inserts)
-      .select("*");
+    const { data: rows, error } = await context.supabase.from("cards").insert(inserts).select("*");
     if (error) throw new Error(error.message);
     return rows ?? [];
   });

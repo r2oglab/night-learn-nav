@@ -25,11 +25,20 @@ function Configuracoes() {
   const fetchCards = useServerFn(listCards);
   const fetchDecks = useServerFn(listDecks);
 
-  const { data: settings } = useQuery({ queryKey: ["user_settings"], queryFn: () => fetchSettings() });
+  const { data: settings } = useQuery({
+    queryKey: ["user_settings"],
+    queryFn: () => fetchSettings(),
+  });
   const { data: decks = [] } = useQuery({ queryKey: ["decks"], queryFn: () => fetchDecks() });
 
   const upsertFn = useServerFn(upsertUserSettings);
-  const upsertMutation = useMutation({ mutationFn: (vars: any) => upsertFn({ data: vars }), onSuccess: () => { void qc.invalidateQueries({ queryKey: ["user_settings"] }); toast.success("Configurações salvas"); } });
+  const upsertMutation = useMutation({
+    mutationFn: (vars: any) => upsertFn({ data: vars }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["user_settings"] });
+      toast.success("Configurações salvas");
+    },
+  });
 
   const exportCsv = async () => {
     try {
@@ -45,13 +54,15 @@ function Configuracoes() {
         difficulty: c.difficulty,
       }));
 
-      const header = ["deck","pergunta","resposta","due","stability","difficulty"] as const;
-      const csv = [header.join(",")].concat(rows.map((r) => header.map((h) => JSON.stringify(r[h] ?? "")).join(","))).join("\n");
+      const header = ["deck", "pergunta", "resposta", "due", "stability", "difficulty"] as const;
+      const csv = [header.join(",")]
+        .concat(rows.map((r) => header.map((h) => JSON.stringify(r[h] ?? "")).join(",")))
+        .join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `meus_cards_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download = `meus_cards_${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -93,19 +104,33 @@ function Configuracoes() {
                   <div className="grid gap-2">
                     <div className="text-sm text-muted-foreground">Meta diária (cards)</div>
                     <div className="flex gap-2 items-center">
-                      <Input type="number" value={settings?.daily_goal ?? 20} onChange={(e) => upsertMutation.mutate({ daily_goal: Number(e.target.value) })} className="w-24" />
-                      <div className="text-sm text-muted-foreground">(Atual: {settings?.daily_goal ?? 20})</div>
+                      <Input
+                        type="number"
+                        value={settings?.daily_goal ?? 20}
+                        onChange={(e) =>
+                          upsertMutation.mutate({ daily_goal: Number(e.target.value) })
+                        }
+                        className="w-24"
+                      />
+                      <div className="text-sm text-muted-foreground">
+                        (Atual: {settings?.daily_goal ?? 20})
+                      </div>
                     </div>
                   </div>
 
                   <div className="grid gap-2">
-                    <div className="text-sm text-muted-foreground">Retenção desejada: {(Math.round((settings?.desired_retention ?? 0.9) * 1000) / 10).toFixed(1)}%</div>
+                    <div className="text-sm text-muted-foreground">
+                      Retenção desejada:{" "}
+                      {(Math.round((settings?.desired_retention ?? 0.9) * 1000) / 10).toFixed(1)}%
+                    </div>
                     <Slider
                       min={0.7}
                       max={0.97}
                       step={0.01}
                       value={[settings?.desired_retention ?? 0.9]}
-                      onValueChange={([v]) => upsertMutation.mutate({ desired_retention: Number(v) })}
+                      onValueChange={([v]) =>
+                        upsertMutation.mutate({ desired_retention: Number(v) })
+                      }
                     />
                   </div>
 

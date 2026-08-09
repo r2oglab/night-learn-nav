@@ -8,7 +8,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { reviewCard } from "@/lib/cards.functions";
 
-export type OcclusionRegion = { id: string; x: number; y: number; width: number; height: number; label?: string | undefined };
+export type OcclusionRegion = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string | undefined;
+};
 
 type Card = {
   id: string;
@@ -49,7 +56,9 @@ export function ReviewSession({
   const current = sessionCards[index];
   const clozeMatch = current?.pergunta?.match(/\{\{c::(.*?)\}\}/);
   const isCloze = !!clozeMatch;
-  const maskedQuestion = isCloze ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, '___') : (current?.pergunta ?? '');
+  const maskedQuestion = isCloze
+    ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, "___")
+    : (current?.pergunta ?? "");
   const clozeFull = isCloze ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, (_, g) => g) : null;
 
   async function handleRating(rating: number) {
@@ -118,10 +127,19 @@ export function ReviewSession({
         }
         return;
       }
-      if (e.key === "1") { e.preventDefault(); void handleRating(Rating.Again); }
-      else if (e.key === "2") { e.preventDefault(); void handleRating(Rating.Hard); }
-      else if (e.key === "3") { e.preventDefault(); void handleRating(Rating.Good); }
-      else if (e.key === "4") { e.preventDefault(); void handleRating(Rating.Easy); }
+      if (e.key === "1") {
+        e.preventDefault();
+        void handleRating(Rating.Again);
+      } else if (e.key === "2") {
+        e.preventDefault();
+        void handleRating(Rating.Hard);
+      } else if (e.key === "3") {
+        e.preventDefault();
+        void handleRating(Rating.Good);
+      } else if (e.key === "4") {
+        e.preventDefault();
+        void handleRating(Rating.Easy);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -150,7 +168,10 @@ export function ReviewSession({
         tallyOf(b).correct + tallyOf(b).incorrect - (tallyOf(a).correct + tallyOf(a).incorrect),
     );
     const totalCorrect = deckNames.reduce((sum, name) => sum + tallyOf(name).correct, 0);
-    const totalCards = deckNames.reduce((sum, name) => sum + tallyOf(name).correct + tallyOf(name).incorrect, 0);
+    const totalCards = deckNames.reduce(
+      (sum, name) => sum + tallyOf(name).correct + tallyOf(name).incorrect,
+      0,
+    );
     const r = 32;
     const circumference = 2 * Math.PI * r;
 
@@ -176,9 +197,19 @@ export function ReviewSession({
                 return sb.correct + sb.incorrect - (sa.correct + sa.incorrect);
               });
               return (
-                <div key={name} className="flex items-start gap-4 rounded-xl border border-border p-4">
+                <div
+                  key={name}
+                  className="flex items-start gap-4 rounded-xl border border-border p-4"
+                >
                   <svg width={70} height={70} viewBox="0 0 80 80" className="shrink-0">
-                    <circle cx={40} cy={40} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={12} />
+                    <circle
+                      cx={40}
+                      cy={40}
+                      r={r}
+                      fill="none"
+                      stroke="hsl(var(--muted))"
+                      strokeWidth={12}
+                    />
                     {correct > 0 && (
                       <circle
                         cx={40}
@@ -209,7 +240,9 @@ export function ReviewSession({
                   <div className="flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="text-sm font-medium">{name}</p>
-                      <p className="shrink-0 text-xs text-muted-foreground">{correct}/{total} acertos</p>
+                      <p className="shrink-0 text-xs text-muted-foreground">
+                        {correct}/{total} acertos
+                      </p>
                     </div>
 
                     {subdeckNames.length > 0 && (
@@ -220,7 +253,10 @@ export function ReviewSession({
                           const pct = stotal > 0 ? Math.round((sc / stotal) * 100) : 0;
                           return (
                             <div key={subName} className="flex items-center gap-2 text-xs">
-                              <span className="w-28 shrink-0 truncate text-muted-foreground" title={subName === DIRECT_ON_ROOT ? name : subName}>
+                              <span
+                                className="w-28 shrink-0 truncate text-muted-foreground"
+                                title={subName === DIRECT_ON_ROOT ? name : subName}
+                              >
                                 {subName === DIRECT_ON_ROOT ? name : subName}
                               </span>
                               <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
@@ -261,7 +297,9 @@ export function ReviewSession({
             </Button>
             <Play className="size-6" />
             <h2 className="text-lg font-semibold">Sessão de Revisão</h2>
-            <div className="ml-auto text-sm text-muted-foreground">{index + 1}/{sessionCards.length}</div>
+            <div className="ml-auto text-sm text-muted-foreground">
+              {index + 1}/{sessionCards.length}
+            </div>
           </div>
 
           <div className="rounded-lg border border-border p-6">
@@ -277,7 +315,12 @@ export function ReviewSession({
                       <div
                         key={region.id}
                         className={`absolute border-2 ${isTarget ? "border-sky-600 bg-sky-500" : "border-amber-600 bg-amber-400"}`}
-                        style={{ left: `${region.x}%`, top: `${region.y}%`, width: `${region.width}%`, height: `${region.height}%` }}
+                        style={{
+                          left: `${region.x}%`,
+                          top: `${region.y}%`,
+                          width: `${region.width}%`,
+                          height: `${region.height}%`,
+                        }}
                       />
                     );
                   })}
@@ -297,7 +340,9 @@ export function ReviewSession({
                 {revealed && (
                   <div className="mt-6">
                     <div className="mb-2 text-sm text-muted-foreground">Resposta</div>
-                    <div className="text-base">{isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}</div>
+                    <div className="text-base">
+                      {isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}
+                    </div>
                   </div>
                 )}
               </>
@@ -309,10 +354,22 @@ export function ReviewSession({
               <Button onClick={() => setRevealed(true)}>Revelar resposta</Button>
             ) : (
               <div className="flex w-full gap-2">
-                <Button disabled={loading} onClick={() => void handleRating(Rating.Again)} variant="destructive">Errei</Button>
-                <Button disabled={loading} onClick={() => void handleRating(Rating.Hard)}>Difícil</Button>
-                <Button disabled={loading} onClick={() => void handleRating(Rating.Good)}>Bom</Button>
-                <Button disabled={loading} onClick={() => void handleRating(Rating.Easy)}>Fácil</Button>
+                <Button
+                  disabled={loading}
+                  onClick={() => void handleRating(Rating.Again)}
+                  variant="destructive"
+                >
+                  Errei
+                </Button>
+                <Button disabled={loading} onClick={() => void handleRating(Rating.Hard)}>
+                  Difícil
+                </Button>
+                <Button disabled={loading} onClick={() => void handleRating(Rating.Good)}>
+                  Bom
+                </Button>
+                <Button disabled={loading} onClick={() => void handleRating(Rating.Easy)}>
+                  Fácil
+                </Button>
               </div>
             )}
           </div>

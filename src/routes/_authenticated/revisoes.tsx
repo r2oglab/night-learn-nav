@@ -20,8 +20,7 @@ export const Route = createFileRoute("/_authenticated/revisoes")({
       { title: "Revisões FSRS — Estuda" },
       {
         name: "description",
-        content:
-          "Revisões por card com agendamento FSRS e criação de conteúdo obrigatório.",
+        content: "Revisões por card com agendamento FSRS e criação de conteúdo obrigatório.",
       },
       { property: "og:title", content: "Revisões FSRS — Estuda" },
       {
@@ -145,7 +144,10 @@ function RevisoesPage() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  if (reviewCount === 0) { toast.info("Nenhum card para revisar hoje."); return; }
+                  if (reviewCount === 0) {
+                    toast.info("Nenhum card para revisar hoje.");
+                    return;
+                  }
                   setShowSession(true);
                 }}
               >
@@ -184,7 +186,9 @@ function RevisoesPage() {
                 </p>
               ) : (
                 <>
-                  <div className="mb-4 text-sm text-muted-foreground">{reviewCount} cards para revisar hoje</div>
+                  <div className="mb-4 text-sm text-muted-foreground">
+                    {reviewCount} cards para revisar hoje
+                  </div>
                   <div className="space-y-6">
                     {Array.from(groupsByRootDeck.entries()).map(([rootName, groupCards]) => (
                       <div key={rootName}>
@@ -193,7 +197,10 @@ function RevisoesPage() {
                           {groupCards.map((card) => {
                             const diff = daysUntil(card.due);
                             return (
-                              <li key={card.id} className="rounded-xl border border-border bg-card p-4">
+                              <li
+                                key={card.id}
+                                className="rounded-xl border border-border bg-card p-4"
+                              >
                                 <div className="flex flex-wrap items-center gap-3">
                                   <p className="font-medium">{card.pergunta}</p>
                                   <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
@@ -206,7 +213,9 @@ function RevisoesPage() {
                                     )}
                                   >
                                     <CalendarClock className="size-3.5" />
-                                    {capitalizeFirst(dateFormatter.format(new Date(`${card.due}T00:00:00`)))}
+                                    {capitalizeFirst(
+                                      dateFormatter.format(new Date(`${card.due}T00:00:00`)),
+                                    )}
                                     {" · "}
                                     {diff === 0
                                       ? "hoje"

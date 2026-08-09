@@ -22,7 +22,14 @@ export const Route = createFileRoute("/_authenticated/criacao")({
 
 type CardType = "simples" | "invertido" | "cloze" | "oclusao";
 
-type DrawingRect = { startX: number; startY: number; x: number; y: number; width: number; height: number };
+type DrawingRect = {
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 function CriacaoPage() {
   const queryClient = useQueryClient();
@@ -64,8 +71,13 @@ function CriacaoPage() {
   const imageAreaRef = useRef<HTMLDivElement>(null);
 
   const create = useMutation({
-    mutationFn: (vars: { deck_id: string; pergunta: string; resposta?: string; invert?: boolean; cloze?: boolean }) =>
-      addCard({ data: vars }),
+    mutationFn: (vars: {
+      deck_id: string;
+      pergunta: string;
+      resposta?: string;
+      invert?: boolean;
+      cloze?: boolean;
+    }) => addCard({ data: vars }),
     onSuccess: () => {
       setDeckPath("");
       setQuestion("");
@@ -133,7 +145,14 @@ function CriacaoPage() {
           const finished = current;
           setRegions((r) => [
             ...r,
-            { id: crypto.randomUUID(), x: finished.x, y: finished.y, width: finished.width, height: finished.height, label: "" },
+            {
+              id: crypto.randomUUID(),
+              x: finished.x,
+              y: finished.y,
+              width: finished.width,
+              height: finished.height,
+              label: "",
+            },
           ]);
         }
         return null;
@@ -155,7 +174,9 @@ function CriacaoPage() {
         const imageType = item.types.find((t) => t.startsWith("image/"));
         if (imageType) {
           const blob = await item.getType(imageType);
-          const file = new File([blob], `colado.${imageType.split("/")[1] || "png"}`, { type: imageType });
+          const file = new File([blob], `colado.${imageType.split("/")[1] || "png"}`, {
+            type: imageType,
+          });
           loadImageFile(file);
           return;
         }
@@ -167,8 +188,14 @@ function CriacaoPage() {
   }
 
   async function handleOcclusionSubmit(deck: string) {
-    if (!occlusionFile) { toast.error("Envie uma imagem."); return; }
-    if (regions.length === 0) { toast.error("Desenhe pelo menos uma área de oclusão."); return; }
+    if (!occlusionFile) {
+      toast.error("Envie uma imagem.");
+      return;
+    }
+    if (regions.length === 0) {
+      toast.error("Desenhe pelo menos uma área de oclusão.");
+      return;
+    }
     setUploading(true);
     try {
       const deckRow = await createNewDeck({ data: { path: deck } });
@@ -176,7 +203,9 @@ function CriacaoPage() {
 
       const ext = occlusionFile.name.split(".").pop() || "png";
       const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("card-images").upload(path, occlusionFile);
+      const { error: uploadError } = await supabase.storage
+        .from("card-images")
+        .upload(path, occlusionFile);
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from("card-images").getPublicUrl(path);
 
@@ -244,7 +273,10 @@ function CriacaoPage() {
                 onSubmit={async (event) => {
                   event.preventDefault();
                   const deck = deckPath.trim();
-                  if (!deck) { toast.error("Informe o caminho do deck (ex: Deck::Subdeck)"); return; }
+                  if (!deck) {
+                    toast.error("Informe o caminho do deck (ex: Deck::Subdeck)");
+                    return;
+                  }
 
                   if (cardType === "oclusao") {
                     await handleOcclusionSubmit(deck);
@@ -253,7 +285,9 @@ function CriacaoPage() {
 
                   if (cloze) {
                     if (!clozeText.trim() || !hasHiddenWord) {
-                      toast.error("Clique em pelo menos uma palavra da frase pra marcar como escondida.");
+                      toast.error(
+                        "Clique em pelo menos uma palavra da frase pra marcar como escondida.",
+                      );
                       return;
                     }
                   } else if (!question.trim() || !answer.trim()) {
@@ -264,7 +298,13 @@ function CriacaoPage() {
                     const deckRow = await createNewDeck({ data: { path: deck } });
                     if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
                     const pergunta = cloze ? buildClozeQuestion() : question.trim();
-                    create.mutate({ deck_id: deckRow.id, pergunta, resposta: answer.trim(), invert, cloze });
+                    create.mutate({
+                      deck_id: deckRow.id,
+                      pergunta,
+                      resposta: answer.trim(),
+                      invert,
+                      cloze,
+                    });
                   } catch (err: any) {
                     toast.error(err?.message ?? String(err));
                   }
@@ -311,12 +351,20 @@ function CriacaoPage() {
                         tabIndex={0}
                       >
                         <p>Cole uma imagem (Ctrl+V) ou escolha um arquivo</p>
-                        <input type="file" accept="image/*" onChange={handleFileChange} className="text-xs" />
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          className="text-xs"
+                        />
                       </div>
                     ) : (
                       <>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>Clique e arraste na imagem para marcar uma área. {regions.length} área(s) marcada(s).</span>
+                          <span>
+                            Clique e arraste na imagem para marcar uma área. {regions.length}{" "}
+                            área(s) marcada(s).
+                          </span>
                           <div className="flex items-center gap-3">
                             <button
                               type="button"
@@ -344,20 +392,35 @@ function CriacaoPage() {
                             className="relative inline-block cursor-crosshair select-none overflow-hidden rounded-lg border border-border"
                             onMouseDown={handleMouseDown}
                           >
-                          <img src={occlusionImageUrl} alt="" className="pointer-events-none block max-h-80 w-auto max-w-full" draggable={false} />
-                          {regions.map((r) => (
-                            <div
-                              key={r.id}
-                              className="absolute border-2 border-amber-600 bg-amber-400/60"
-                              style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.width}%`, height: `${r.height}%` }}
+                            <img
+                              src={occlusionImageUrl}
+                              alt=""
+                              className="pointer-events-none block max-h-80 w-auto max-w-full"
+                              draggable={false}
                             />
-                          ))}
-                          {drawing && (
-                            <div
-                              className="absolute border-2 border-dashed border-amber-500 bg-amber-400/30"
-                              style={{ left: `${drawing.x}%`, top: `${drawing.y}%`, width: `${drawing.width}%`, height: `${drawing.height}%` }}
-                            />
-                          )}
+                            {regions.map((r) => (
+                              <div
+                                key={r.id}
+                                className="absolute border-2 border-amber-600 bg-amber-400/60"
+                                style={{
+                                  left: `${r.x}%`,
+                                  top: `${r.y}%`,
+                                  width: `${r.width}%`,
+                                  height: `${r.height}%`,
+                                }}
+                              />
+                            ))}
+                            {drawing && (
+                              <div
+                                className="absolute border-2 border-dashed border-amber-500 bg-amber-400/30"
+                                style={{
+                                  left: `${drawing.x}%`,
+                                  top: `${drawing.y}%`,
+                                  width: `${drawing.width}%`,
+                                  height: `${drawing.height}%`,
+                                }}
+                              />
+                            )}
                           </div>
                         </div>
 
@@ -365,12 +428,16 @@ function CriacaoPage() {
                           <ul className="space-y-2">
                             {regions.map((r, i) => (
                               <li key={r.id} className="flex items-center gap-2">
-                                <span className="w-16 shrink-0 text-xs text-muted-foreground">Área {i + 1}</span>
+                                <span className="w-16 shrink-0 text-xs text-muted-foreground">
+                                  Área {i + 1}
+                                </span>
                                 <Input
                                   value={r.label}
                                   onChange={(e) =>
                                     setRegions((prev) =>
-                                      prev.map((x) => (x.id === r.id ? { ...x, label: e.target.value } : x)),
+                                      prev.map((x) =>
+                                        x.id === r.id ? { ...x, label: e.target.value } : x,
+                                      ),
                                     )
                                   }
                                   placeholder="Rótulo (opcional)"
@@ -379,7 +446,9 @@ function CriacaoPage() {
                                 <button
                                   type="button"
                                   className="shrink-0 text-xs text-destructive underline hover:text-destructive/80"
-                                  onClick={() => setRegions((prev) => prev.filter((x) => x.id !== r.id))}
+                                  onClick={() =>
+                                    setRegions((prev) => prev.filter((x) => x.id !== r.id))
+                                  }
                                 >
                                   Remover
                                 </button>
@@ -406,7 +475,9 @@ function CriacaoPage() {
 
                     {clozeText.trim() !== "" && (
                       <>
-                        <p className="text-xs text-muted-foreground">Clique nas palavras que quer esconder:</p>
+                        <p className="text-xs text-muted-foreground">
+                          Clique nas palavras que quer esconder:
+                        </p>
                         <p className="rounded-md border border-border p-3 text-sm leading-relaxed">
                           {clozeTokens.map((tok, i) =>
                             tok.trim() === "" ? (
@@ -430,7 +501,9 @@ function CriacaoPage() {
                           Pré-visualização:{" "}
                           <span className="text-foreground">
                             {hasHiddenWord
-                              ? clozeTokens.map((tok, i) => (hiddenTokens.has(i) ? "___" : tok)).join("")
+                              ? clozeTokens
+                                  .map((tok, i) => (hiddenTokens.has(i) ? "___" : tok))
+                                  .join("")
                               : "(nenhuma palavra marcada ainda)"}
                           </span>
                         </p>
@@ -459,7 +532,11 @@ function CriacaoPage() {
                 )}
 
                 {cardType === "oclusao" && (
-                  <Button type="button" variant="outline" onClick={() => void handlePasteButtonClick()}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handlePasteButtonClick()}
+                  >
                     <ClipboardPaste className="size-4" />
                     Colar Imagem da Área de Transferência
                   </Button>

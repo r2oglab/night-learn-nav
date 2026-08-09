@@ -45,9 +45,7 @@ export function AppSidebar() {
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <BrainCircuit className="size-4" />
           </div>
-          {!collapsed && (
-            <span className="text-sm font-semibold tracking-tight">Estuda</span>
-          )}
+          {!collapsed && <span className="text-sm font-semibold tracking-tight">Estuda</span>}
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -65,7 +63,6 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

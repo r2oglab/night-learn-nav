@@ -36,9 +36,6 @@ export type CardFields = {
   last_review: string | null;
 };
 
-
-
-
 export function rowToCard(row: CardRow): Card {
   const empty = createEmptyCard();
   return {
@@ -73,7 +70,12 @@ export function newCardFields(): CardFields {
   return cardToFields(createEmptyCard());
 }
 
-export function reviewCard(row: CardRow, rating: number, now = new Date(), request_retention?: number): CardFields {
+export function reviewCard(
+  row: CardRow,
+  rating: number,
+  now = new Date(),
+  request_retention?: number,
+): CardFields {
   const params: any = { enable_fuzz: true };
   if (typeof request_retention === "number") params.request_retention = request_retention;
   const localScheduler = fsrs(generatorParameters(params));

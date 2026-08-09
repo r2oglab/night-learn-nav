@@ -7,8 +7,8 @@ export const listDecks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
-        .from("decks")
-        .select("id,user_id,name,parent_id,created_at")
+      .from("decks")
+      .select("id,user_id,name,parent_id,created_at")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []) as DeckRow[];
@@ -58,9 +58,7 @@ export const createDeck = createServerFn({ method: "POST" })
         .limit(1);
 
       const selectQuery: any =
-        parentId === null
-          ? query.is("parent_id", null)
-          : query.eq("parent_id", parentId);
+        parentId === null ? query.is("parent_id", null) : query.eq("parent_id", parentId);
 
       const { data: existingRows, error: selectError } = await selectQuery;
       if (selectError) throw selectError;

@@ -5,7 +5,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export type RegionDraft = { id: string; x: number; y: number; width: number; height: number; label: string };
+export type RegionDraft = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+};
 
 type Rect = { x: number; y: number; width: number; height: number };
 type PendingText = { id: string; x: number; y: number; text: string; fontSize: number };
@@ -19,11 +26,33 @@ type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 // anchor without needing to be re-subscribed on every pixel of movement.
 type Interaction =
   | { kind: "draw"; tool: "select" | "crop"; startX: number; startY: number }
-  | { kind: "move-region"; id: string; startX: number; startY: number; origX: number; origY: number }
-  | { kind: "resize-region"; id: string; handle: ResizeHandle; startX: number; startY: number; orig: Rect }
+  | {
+      kind: "move-region";
+      id: string;
+      startX: number;
+      startY: number;
+      origX: number;
+      origY: number;
+    }
+  | {
+      kind: "resize-region";
+      id: string;
+      handle: ResizeHandle;
+      startX: number;
+      startY: number;
+      orig: Rect;
+    }
   | { kind: "move-crop"; startX: number; startY: number; origX: number; origY: number }
   | { kind: "resize-crop"; handle: ResizeHandle; startX: number; startY: number; orig: Rect }
-  | { kind: "move-text"; id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+  | {
+      kind: "move-text";
+      id: string;
+      startX: number;
+      startY: number;
+      origX: number;
+      origY: number;
+      moved: boolean;
+    }
   | { kind: "resize-text"; id: string; startClientY: number; origSize: number };
 
 const MIN_SIZE = 1.5; // percent — smallest a box is allowed to shrink to
@@ -71,7 +100,13 @@ const HANDLES: { key: ResizeHandle; pos: string; cursor: string }[] = [
   { key: "w", pos: "top-1/2 -left-1 -translate-y-1/2", cursor: "cursor-ew-resize" },
 ];
 
-function ResizeHandles({ color, onStart }: { color: string; onStart: (e: React.MouseEvent, handle: ResizeHandle) => void }) {
+function ResizeHandles({
+  color,
+  onStart,
+}: {
+  color: string;
+  onStart: (e: React.MouseEvent, handle: ResizeHandle) => void;
+}) {
   return (
     <>
       {HANDLES.map((h) => (
@@ -142,7 +177,12 @@ export function ImageOcclusionEditor({
       if (interaction.kind === "draw") {
         const newX = Math.min(x, interaction.startX);
         const newY = Math.min(y, interaction.startY);
-        const rect = { x: newX, y: newY, width: Math.abs(x - interaction.startX), height: Math.abs(y - interaction.startY) };
+        const rect = {
+          x: newX,
+          y: newY,
+          width: Math.abs(x - interaction.startX),
+          height: Math.abs(y - interaction.startY),
+        };
         dragRef.current = rect;
         setDrag(rect);
       } else if (interaction.kind === "move-region") {
@@ -160,7 +200,9 @@ export function ImageOcclusionEditor({
         const dx = x - interaction.startX;
         const dy = y - interaction.startY;
         const next = applyResize(interaction.handle, interaction.orig, dx, dy);
-        setLocalRegions((prev) => prev.map((r) => (r.id === interaction.id ? { ...r, ...next } : r)));
+        setLocalRegions((prev) =>
+          prev.map((r) => (r.id === interaction.id ? { ...r, ...next } : r)),
+        );
       } else if (interaction.kind === "move-crop") {
         const dx = x - interaction.startX;
         const dy = y - interaction.startY;
@@ -180,11 +222,15 @@ export function ImageOcclusionEditor({
         if (Math.abs(dx) > 1 || Math.abs(dy) > 1) interaction.moved = true;
         const newX = Math.max(0, Math.min(100, interaction.origX + dx));
         const newY = Math.max(0, Math.min(100, interaction.origY + dy));
-        setTexts((prev) => prev.map((t) => (t.id === interaction.id ? { ...t, x: newX, y: newY } : t)));
+        setTexts((prev) =>
+          prev.map((t) => (t.id === interaction.id ? { ...t, x: newX, y: newY } : t)),
+        );
       } else if (interaction.kind === "resize-text") {
         const dy = e.clientY - interaction.startClientY;
         const newSize = Math.max(8, Math.min(72, interaction.origSize + dy));
-        setTexts((prev) => prev.map((t) => (t.id === interaction.id ? { ...t, fontSize: newSize } : t)));
+        setTexts((prev) =>
+          prev.map((t) => (t.id === interaction.id ? { ...t, fontSize: newSize } : t)),
+        );
       }
     }
 
@@ -201,10 +247,22 @@ export function ImageOcclusionEditor({
           if (interaction.tool === "select") {
             setLocalRegions((r) => [
               ...r,
-              { id: crypto.randomUUID(), x: finalRect.x, y: finalRect.y, width: finalRect.width, height: finalRect.height, label: "" },
+              {
+                id: crypto.randomUUID(),
+                x: finalRect.x,
+                y: finalRect.y,
+                width: finalRect.width,
+                height: finalRect.height,
+                label: "",
+              },
             ]);
           } else {
-            setCropRect({ x: finalRect.x, y: finalRect.y, width: finalRect.width, height: finalRect.height });
+            setCropRect({
+              x: finalRect.x,
+              y: finalRect.y,
+              width: finalRect.width,
+              height: finalRect.height,
+            });
           }
         }
       } else if (interaction?.kind === "move-text") {
@@ -257,7 +315,14 @@ export function ImageOcclusionEditor({
     e.stopPropagation();
     if (tool !== "select") return;
     const { x, y } = getPos(e.clientX, e.clientY);
-    beginInteraction({ kind: "move-region", id: region.id, startX: x, startY: y, origX: region.x, origY: region.y });
+    beginInteraction({
+      kind: "move-region",
+      id: region.id,
+      startX: x,
+      startY: y,
+      origX: region.x,
+      origY: region.y,
+    });
   }
 
   function startRegionResize(e: React.MouseEvent, region: RegionDraft, handle: ResizeHandle) {
@@ -277,7 +342,13 @@ export function ImageOcclusionEditor({
     e.stopPropagation();
     if (!cropRect) return;
     const { x, y } = getPos(e.clientX, e.clientY);
-    beginInteraction({ kind: "move-crop", startX: x, startY: y, origX: cropRect.x, origY: cropRect.y });
+    beginInteraction({
+      kind: "move-crop",
+      startX: x,
+      startY: y,
+      origX: cropRect.x,
+      origY: cropRect.y,
+    });
   }
 
   function startCropResize(e: React.MouseEvent, handle: ResizeHandle) {
@@ -290,12 +361,25 @@ export function ImageOcclusionEditor({
   function startTextDrag(e: React.MouseEvent, t: PendingText) {
     e.stopPropagation();
     const { x, y } = getPos(e.clientX, e.clientY);
-    beginInteraction({ kind: "move-text", id: t.id, startX: x, startY: y, origX: t.x, origY: t.y, moved: false });
+    beginInteraction({
+      kind: "move-text",
+      id: t.id,
+      startX: x,
+      startY: y,
+      origX: t.x,
+      origY: t.y,
+      moved: false,
+    });
   }
 
   function startTextResize(e: React.MouseEvent, t: PendingText) {
     e.stopPropagation();
-    beginInteraction({ kind: "resize-text", id: t.id, startClientY: e.clientY, origSize: t.fontSize });
+    beginInteraction({
+      kind: "resize-text",
+      id: t.id,
+      startClientY: e.clientY,
+      origSize: t.fontSize,
+    });
   }
 
   useEffect(() => {
@@ -331,7 +415,9 @@ export function ImageOcclusionEditor({
     const ctx = canvas.getContext("2d")!;
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
 
-    const blob: Blob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b!), "image/png"));
+    const blob: Blob = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b!), "image/png"),
+    );
     setWorkingUrl(URL.createObjectURL(blob));
     setCropRect(null);
     setImageChanged(true);
@@ -373,7 +459,9 @@ export function ImageOcclusionEditor({
       }
     }
 
-    const blob: Blob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b!), "image/png"));
+    const blob: Blob = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b!), "image/png"),
+    );
     const file = new File([blob], "editada.png", { type: "image/png" });
     onApply({ file, regions: localRegions });
   }
@@ -383,19 +471,38 @@ export function ImageOcclusionEditor({
       <div className="flex max-h-[90vh] w-full max-w-5xl flex-col gap-3 overflow-y-auto rounded-lg bg-card p-6 shadow-lg">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Editor de imagem</h2>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground"
+          >
             <X className="size-5" />
           </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" variant={tool === "select" ? "default" : "outline"} onClick={() => setTool("select")}>
+          <Button
+            type="button"
+            size="sm"
+            variant={tool === "select" ? "default" : "outline"}
+            onClick={() => setTool("select")}
+          >
             <Square className="size-4" /> Marcar área
           </Button>
-          <Button type="button" size="sm" variant={tool === "crop" ? "default" : "outline"} onClick={() => setTool("crop")}>
+          <Button
+            type="button"
+            size="sm"
+            variant={tool === "crop" ? "default" : "outline"}
+            onClick={() => setTool("crop")}
+          >
             <CropIcon className="size-4" /> Cortar
           </Button>
-          <Button type="button" size="sm" variant={tool === "text" ? "default" : "outline"} onClick={() => setTool("text")}>
+          <Button
+            type="button"
+            size="sm"
+            variant={tool === "text" ? "default" : "outline"}
+            onClick={() => setTool("text")}
+          >
             <Type className="size-4" /> Texto
           </Button>
           {tool === "crop" && cropRect && (
@@ -409,9 +516,12 @@ export function ImageOcclusionEditor({
             </>
           )}
           <span className="text-xs text-muted-foreground">
-            {tool === "select" && "Arraste pra marcar. Arraste o centro pra mover, as alças pra redimensionar em qualquer direção."}
-            {tool === "crop" && "Arraste pra selecionar o corte. Arraste o centro pra mover, as alças pra redimensionar."}
-            {tool === "text" && "Clique pra adicionar texto. Arraste o texto pra mover, o cantinho pra mudar o tamanho da fonte."}
+            {tool === "select" &&
+              "Arraste pra marcar. Arraste o centro pra mover, as alças pra redimensionar em qualquer direção."}
+            {tool === "crop" &&
+              "Arraste pra selecionar o corte. Arraste o centro pra mover, as alças pra redimensionar."}
+            {tool === "text" &&
+              "Clique pra adicionar texto. Arraste o texto pra mover, o cantinho pra mudar o tamanho da fonte."}
           </span>
         </div>
 
@@ -437,10 +547,18 @@ export function ImageOcclusionEditor({
                   <div
                     key={r.id}
                     className="absolute cursor-move border-2 border-amber-600 bg-amber-400/60"
-                    style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.width}%`, height: `${r.height}%` }}
+                    style={{
+                      left: `${r.x}%`,
+                      top: `${r.y}%`,
+                      width: `${r.width}%`,
+                      height: `${r.height}%`,
+                    }}
                     onMouseDown={(e) => startRegionMove(e, r)}
                   >
-                    <ResizeHandles color="bg-amber-700" onStart={(e, handle) => startRegionResize(e, r, handle)} />
+                    <ResizeHandles
+                      color="bg-amber-700"
+                      onStart={(e, handle) => startRegionResize(e, r, handle)}
+                    />
                   </div>
                 ))}
 
@@ -451,10 +569,19 @@ export function ImageOcclusionEditor({
                     autoFocus
                     rows={1}
                     className="absolute z-10 resize-none whitespace-pre-wrap break-words rounded bg-background px-1 leading-tight outline outline-2 outline-primary"
-                    style={{ left: `${t.x}%`, top: `${t.y}%`, maxWidth: `calc(100% - ${t.x}%)`, fontSize: `${t.fontSize}px` }}
+                    style={{
+                      left: `${t.x}%`,
+                      top: `${t.y}%`,
+                      maxWidth: `calc(100% - ${t.x}%)`,
+                      fontSize: `${t.fontSize}px`,
+                    }}
                     value={t.text}
                     onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => setTexts((prev) => prev.map((x) => (x.id === t.id ? { ...x, text: e.target.value } : x)))}
+                    onChange={(e) =>
+                      setTexts((prev) =>
+                        prev.map((x) => (x.id === t.id ? { ...x, text: e.target.value } : x)),
+                      )
+                    }
                     onBlur={() => finishEditingText(t.id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -467,7 +594,12 @@ export function ImageOcclusionEditor({
                   <div
                     key={t.id}
                     className="absolute z-10 cursor-move select-none whitespace-pre-wrap break-words rounded bg-black/70 px-1 font-semibold leading-tight text-amber-300"
-                    style={{ left: `${t.x}%`, top: `${t.y}%`, maxWidth: `calc(100% - ${t.x}%)`, fontSize: `${t.fontSize}px` }}
+                    style={{
+                      left: `${t.x}%`,
+                      top: `${t.y}%`,
+                      maxWidth: `calc(100% - ${t.x}%)`,
+                      fontSize: `${t.fontSize}px`,
+                    }}
                     onMouseDown={(e) => startTextDrag(e, t)}
                   >
                     {t.text || "…"}
@@ -482,19 +614,34 @@ export function ImageOcclusionEditor({
               {drag && (
                 <div
                   className={`absolute border-2 border-dashed ${
-                    tool === "crop" ? "border-sky-500 bg-sky-400/30" : "border-amber-500 bg-amber-400/30"
+                    tool === "crop"
+                      ? "border-sky-500 bg-sky-400/30"
+                      : "border-amber-500 bg-amber-400/30"
                   }`}
-                  style={{ left: `${drag.x}%`, top: `${drag.y}%`, width: `${drag.width}%`, height: `${drag.height}%` }}
+                  style={{
+                    left: `${drag.x}%`,
+                    top: `${drag.y}%`,
+                    width: `${drag.width}%`,
+                    height: `${drag.height}%`,
+                  }}
                 />
               )}
 
               {tool === "crop" && cropRect && (
                 <div
                   className="absolute cursor-move border-2 border-sky-500 bg-sky-400/30"
-                  style={{ left: `${cropRect.x}%`, top: `${cropRect.y}%`, width: `${cropRect.width}%`, height: `${cropRect.height}%` }}
+                  style={{
+                    left: `${cropRect.x}%`,
+                    top: `${cropRect.y}%`,
+                    width: `${cropRect.width}%`,
+                    height: `${cropRect.height}%`,
+                  }}
                   onMouseDown={startCropMove}
                 >
-                  <ResizeHandles color="bg-sky-700" onStart={(e, handle) => startCropResize(e, handle)} />
+                  <ResizeHandles
+                    color="bg-sky-700"
+                    onStart={(e, handle) => startCropResize(e, handle)}
+                  />
                 </div>
               )}
             </div>
@@ -503,7 +650,10 @@ export function ImageOcclusionEditor({
           {tool === "crop" && cropRect && (
             <div className="flex w-40 shrink-0 flex-col gap-1">
               <span className="text-xs text-muted-foreground">Prévia do corte</span>
-              <canvas ref={previewCanvasRef} className="w-full rounded border border-border bg-background" />
+              <canvas
+                ref={previewCanvasRef}
+                className="w-full rounded border border-border bg-background"
+              />
             </div>
           )}
         </div>
@@ -516,7 +666,9 @@ export function ImageOcclusionEditor({
                 <Input
                   value={r.label}
                   onChange={(e) =>
-                    setLocalRegions((prev) => prev.map((x) => (x.id === r.id ? { ...x, label: e.target.value } : x)))
+                    setLocalRegions((prev) =>
+                      prev.map((x) => (x.id === r.id ? { ...x, label: e.target.value } : x)),
+                    )
                   }
                   placeholder="Rótulo (opcional)"
                   className="flex-1"
@@ -535,8 +687,8 @@ export function ImageOcclusionEditor({
 
         {tool === "text" && texts.length > 0 && (
           <div className="text-xs text-muted-foreground">
-            {texts.length} texto(s). Clique pra editar, arraste o texto pra mover, arraste o cantinho pra mudar o tamanho —
-            deixar vazio ao sair remove ele.
+            {texts.length} texto(s). Clique pra editar, arraste o texto pra mover, arraste o
+            cantinho pra mudar o tamanho — deixar vazio ao sair remove ele.
           </div>
         )}
 

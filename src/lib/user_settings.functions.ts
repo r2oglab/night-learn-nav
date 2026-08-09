@@ -27,8 +27,10 @@ export const upsertUserSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: { daily_goal?: number; desired_retention?: number; streak?: number }) => {
     const out: any = {};
-    if (typeof input.daily_goal === "number") out.daily_goal = Math.max(0, Math.round(input.daily_goal));
-    if (typeof input.desired_retention === "number") out.desired_retention = Math.max(0.0, Math.min(1.0, input.desired_retention));
+    if (typeof input.daily_goal === "number")
+      out.daily_goal = Math.max(0, Math.round(input.daily_goal));
+    if (typeof input.desired_retention === "number")
+      out.desired_retention = Math.max(0.0, Math.min(1.0, input.desired_retention));
     if (typeof input.streak === "number") out.streak = Math.max(0, Math.floor(input.streak));
     return out;
   })

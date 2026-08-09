@@ -135,7 +135,10 @@ function FlashcardsPage() {
             <div className="flex items-center gap-2 w-full">
               <Input value={editingDeckName} onChange={(e) => setEditingDeckName(e.target.value)} />
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => updateDeckMutation.mutate({ id: deck.id, name: editingDeckName })}>
+                <Button
+                  size="sm"
+                  onClick={() => updateDeckMutation.mutate({ id: deck.id, name: editingDeckName })}
+                >
                   Salvar
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditingDeckId(null)}>
@@ -162,7 +165,9 @@ function FlashcardsPage() {
                   onClick={() => {
                     const deckIds = new Set(collectDeckIds(deck.id));
                     const count = cards.filter((c: any) => deckIds.has(c.deck_id)).length;
-                    const ok = window.confirm(`Excluir deck "${deck.name}"? Isso também removerá ${count} card(s) deste deck.`);
+                    const ok = window.confirm(
+                      `Excluir deck "${deck.name}"? Isso também removerá ${count} card(s) deste deck.`,
+                    );
                     if (ok) removeDeck.mutate(deck.id);
                   }}
                 >
@@ -174,8 +179,8 @@ function FlashcardsPage() {
         </div>
 
         {/* Render this deck's own cards only when expanded */}
-        {isOpen && (
-          deckCards.length === 0 ? (
+        {isOpen &&
+          (deckCards.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum card neste deck.</p>
           ) : (
             <ul className="space-y-3">
@@ -184,14 +189,32 @@ function FlashcardsPage() {
                   {editingId === card.id ? (
                     <div className="flex-1">
                       <label className="flex flex-col gap-2">
-                        <Input value={editingQuestion} onChange={(e) => setEditingQuestion(e.target.value)} />
-                        <Input value={editingAnswer} onChange={(e) => setEditingAnswer(e.target.value)} />
+                        <Input
+                          value={editingQuestion}
+                          onChange={(e) => setEditingQuestion(e.target.value)}
+                        />
+                        <Input
+                          value={editingAnswer}
+                          onChange={(e) => setEditingAnswer(e.target.value)}
+                        />
                       </label>
                       <div className="mt-2 flex gap-2">
-                        <Button size="sm" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate({ id: card.id, pergunta: editingQuestion, resposta: editingAnswer })}>
+                        <Button
+                          size="sm"
+                          disabled={updateMutation.isPending}
+                          onClick={() =>
+                            updateMutation.mutate({
+                              id: card.id,
+                              pergunta: editingQuestion,
+                              resposta: editingAnswer,
+                            })
+                          }
+                        >
                           Salvar
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancelar</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                          Cancelar
+                        </Button>
                       </div>
                     </div>
                   ) : (
@@ -199,9 +222,14 @@ function FlashcardsPage() {
                       <div>
                         {/\{\{c::(.*?)\}\}/.test(card.pergunta) ? (
                           <>
-                            <p className="font-medium">{card.pergunta.replace(/\{\{c::(.*?)\}\}/g, "___")}</p>
+                            <p className="font-medium">
+                              {card.pergunta.replace(/\{\{c::(.*?)\}\}/g, "___")}
+                            </p>
                             <p className="text-sm text-muted-foreground">
-                              {card.pergunta.replace(/\{\{c::(.*?)\}\}/g, (_: string, g: string) => g)}
+                              {card.pergunta.replace(
+                                /\{\{c::(.*?)\}\}/g,
+                                (_: string, g: string) => g,
+                              )}
                             </p>
                           </>
                         ) : (
@@ -210,7 +238,9 @@ function FlashcardsPage() {
                             <p className="text-sm text-muted-foreground">{card.resposta}</p>
                           </>
                         )}
-                        <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {getPath(card.deck_id)}
+                        </div>
                       </div>
                       <div className="flex items-center gap-3 text-xs">
                         <button
@@ -239,8 +269,7 @@ function FlashcardsPage() {
                 </li>
               ))}
             </ul>
-          )
-        )}
+          ))}
 
         {/* Render subdecks below, when expanded */}
         {children.length > 0 && isOpen && (
@@ -274,7 +303,9 @@ function FlashcardsPage() {
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
               ) : decks.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhum deck ainda.</p>
+                <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+                  Nenhum deck ainda.
+                </p>
               ) : cardsLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
