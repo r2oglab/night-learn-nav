@@ -12,7 +12,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { listCards } from "@/lib/cards.functions";
 import { listDecks } from "@/lib/decks.functions";
 import { capitalizeFirst, cn } from "@/lib/utils";
-import ReviewSession from "@/components/review-session";
+import ReviewSession, { type OcclusionRegion } from "@/components/review-session";
 
 export const Route = createFileRoute("/_authenticated/revisoes")({
   head: () => ({
@@ -113,6 +113,12 @@ function RevisoesPage() {
       ...card,
       rootDeckName: findRootDeckName(card.deck_id),
       level1SubdeckName: findLevel1SubdeckName(card.deck_id),
+      // occlusion_regions comes back as generic Json from the DB; narrow it
+      // to the shape ReviewSession expects, defaulting to null if it's
+      // anything unexpected rather than trusting the cast blindly.
+      occlusion_regions: Array.isArray(card.occlusion_regions)
+        ? (card.occlusion_regions as unknown as OcclusionRegion[])
+        : null,
     }));
 
   const reviewCount = cardsToReview.length;

@@ -199,7 +199,7 @@ export const updateCard = createServerFn({ method: "POST" })
     return updated;
   });
 
-type OcclusionRegion = { id: string; x: number; y: number; width: number; height: number; label?: string };
+type OcclusionRegion = { id: string; x: number; y: number; width: number; height: number; label?: string | undefined };
 
 export const createImageOcclusionCards = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

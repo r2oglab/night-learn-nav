@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { X, Play } from "lucide-react";
@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { reviewCard } from "@/lib/cards.functions";
 
-type OcclusionRegion = { id: string; x: number; y: number; width: number; height: number; label?: string };
+export type OcclusionRegion = { id: string; x: number; y: number; width: number; height: number; label?: string | undefined };
 
 type Card = {
   id: string;
@@ -42,6 +42,7 @@ export function ReviewSession({
   const [tally, setTally] = useState<Record<string, DeckTally>>({});
   const [subdeckTally, setSubdeckTally] = useState<Record<string, Record<string, DeckTally>>>({});
   const [sessionCards] = useState(() => cards);
+  const gradingRef = useRef(false);
   const grade = useServerFn(reviewCard);
   const qc = useQueryClient();
 
@@ -53,6 +54,11 @@ export function ReviewSession({
 
   async function handleRating(rating: number) {
     if (!current) return;
+    // `loading` is React state, so it doesn't flip until the next render —
+    // two fast keypresses can both get past a `loading` check and grade two
+    // cards from one intent. This ref flips synchronously and closes that gap.
+    if (gradingRef.current) return;
+    gradingRef.current = true;
     setLoading(true);
     try {
       await grade({ data: { id: current.id, rating } });
@@ -97,6 +103,7 @@ export function ReviewSession({
     } catch (err: any) {
       toast.error(err?.message ?? String(err));
     } finally {
+      gradingRef.current = false;
       setLoading(false);
     }
   }
@@ -132,11 +139,18 @@ export function ReviewSession({
   }
 
   if (finished) {
+    // Keys come from the objects themselves, so lookups always hit — but
+    // TypeScript can't prove that, and an explicit fallback is safer than
+    // a non-null assertion if the shape ever changes.
+    const EMPTY_TALLY: DeckTally = { correct: 0, incorrect: 0 };
+    const tallyOf = (name: string): DeckTally => tally[name] ?? EMPTY_TALLY;
+
     const deckNames = Object.keys(tally).sort(
-      (a, b) => tally[b].correct + tally[b].incorrect - (tally[a].correct + tally[a].incorrect),
+      (a, b) =>
+        tallyOf(b).correct + tallyOf(b).incorrect - (tallyOf(a).correct + tallyOf(a).incorrect),
     );
-    const totalCorrect = deckNames.reduce((sum, name) => sum + tally[name].correct, 0);
-    const totalCards = deckNames.reduce((sum, name) => sum + tally[name].correct + tally[name].incorrect, 0);
+    const totalCorrect = deckNames.reduce((sum, name) => sum + tallyOf(name).correct, 0);
+    const totalCards = deckNames.reduce((sum, name) => sum + tallyOf(name).correct + tallyOf(name).incorrect, 0);
     const r = 32;
     const circumference = 2 * Math.PI * r;
 
@@ -150,14 +164,16 @@ export function ReviewSession({
 
           <div className="mt-6 space-y-4">
             {deckNames.map((name) => {
-              const { correct, incorrect } = tally[name];
+              const { correct, incorrect } = tallyOf(name);
               const total = correct + incorrect;
               const correctDash = total > 0 ? (correct / total) * circumference : 0;
               const subdecks = subdeckTally[name] ?? {};
               const subdeckNames = Object.keys(subdecks).sort((a, b) => {
                 if (a === DIRECT_ON_ROOT) return 1;
                 if (b === DIRECT_ON_ROOT) return -1;
-                return subdecks[b].correct + subdecks[b].incorrect - (subdecks[a].correct + subdecks[a].incorrect);
+                const sa = subdecks[a] ?? EMPTY_TALLY;
+                const sb = subdecks[b] ?? EMPTY_TALLY;
+                return sb.correct + sb.incorrect - (sa.correct + sa.incorrect);
               });
               return (
                 <div key={name} className="flex items-start gap-4 rounded-xl border border-border p-4">
@@ -199,7 +215,7 @@ export function ReviewSession({
                     {subdeckNames.length > 0 && (
                       <div className="mt-3 space-y-2">
                         {subdeckNames.map((subName) => {
-                          const { correct: sc, incorrect: si } = subdecks[subName];
+                          const { correct: sc, incorrect: si } = subdecks[subName] ?? EMPTY_TALLY;
                           const stotal = sc + si;
                           const pct = stotal > 0 ? Math.round((sc / stotal) * 100) : 0;
                           return (

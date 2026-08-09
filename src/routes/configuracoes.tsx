@@ -45,7 +45,7 @@ function Configuracoes() {
         difficulty: c.difficulty,
       }));
 
-      const header = ["deck","pergunta","resposta","due","stability","difficulty"];
+      const header = ["deck","pergunta","resposta","due","stability","difficulty"] as const;
       const csv = [header.join(",")].concat(rows.map((r) => header.map((h) => JSON.stringify(r[h] ?? "")).join(","))).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
