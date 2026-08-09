@@ -24,10 +24,6 @@ type Card = {
 
 type DeckTally = { correct: number; incorrect: number };
 
-// Sentinel key for cards attached directly to the root deck, with no
-// first-level subdeck. Rendered as its own bar so the subdeck breakdown
-// always adds up to the deck's total — otherwise those cards would count
-// toward the header total but never show up anywhere in the list below.
 const DIRECT_ON_ROOT = "__direct__";
 
 export function ReviewSession({
@@ -45,10 +41,6 @@ export function ReviewSession({
   const [finished, setFinished] = useState(false);
   const [tally, setTally] = useState<Record<string, DeckTally>>({});
   const [subdeckTally, setSubdeckTally] = useState<Record<string, Record<string, DeckTally>>>({});
-  // Freeze the list once, at session start. The `cards` prop comes from a
-  // live query in the parent that gets invalidated after every rating (so
-  // the app-wide card list stays fresh), which would otherwise shrink out
-  // from under this component mid-session and desync `index`/length.
   const [sessionCards] = useState(() => cards);
   const grade = useServerFn(reviewCard);
   const qc = useQueryClient();
@@ -163,8 +155,6 @@ export function ReviewSession({
               const correctDash = total > 0 ? (correct / total) * circumference : 0;
               const subdecks = subdeckTally[name] ?? {};
               const subdeckNames = Object.keys(subdecks).sort((a, b) => {
-                // Keep "direto no deck" last regardless of its count — it's
-                // the leftover bucket, not a real subdeck to rank.
                 if (a === DIRECT_ON_ROOT) return 1;
                 if (b === DIRECT_ON_ROOT) return -1;
                 return subdecks[b].correct + subdecks[b].incorrect - (subdecks[a].correct + subdecks[a].incorrect);
@@ -248,16 +238,11 @@ export function ReviewSession({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
       <div className="relative w-full max-w-3xl rounded-lg bg-card p-6 shadow-lg">
-        <button
-          onClick={onExit}
-          className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-md p-2 text-sm text-muted-foreground"
-        >
-          <X className="size-4" />
-          <span className="sr-only">Sair</span>
-        </button>
-
         <div className="flex flex-col items-stretch gap-6">
           <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={onExit}>
+              <X className="size-4" /> Sair
+            </Button>
             <Play className="size-6" />
             <h2 className="text-lg font-semibold">Sessão de Revisão</h2>
             <div className="ml-auto text-sm text-muted-foreground">{index + 1}/{sessionCards.length}</div>

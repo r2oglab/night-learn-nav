@@ -22,9 +22,6 @@ export const Route = createFileRoute("/_authenticated/criacao")({
 
 type CardType = "simples" | "invertido" | "cloze" | "oclusao";
 
-const CLOZE_REGEX = /\{\{c::(.*?)\}\}/;
-const CLOZE_REGEX_G = /\{\{c::(.*?)\}\}/g;
-
 type DrawingRect = { startX: number; startY: number; x: number; y: number; width: number; height: number };
 
 function CriacaoPage() {
@@ -39,8 +36,23 @@ function CriacaoPage() {
   const [cardType, setCardType] = useState<CardType>("simples");
   const invert = cardType === "invertido";
   const cloze = cardType === "cloze";
-  const hasClozeMarker = CLOZE_REGEX.test(question);
-  const questionInputRef = useRef<HTMLInputElement>(null);
+  const [clozeText, setClozeText] = useState("");
+  const [hiddenTokens, setHiddenTokens] = useState<Set<number>>(new Set());
+  const clozeTokens = clozeText.split(/(\s+)/);
+  const hasHiddenWord = hiddenTokens.size > 0;
+
+  function toggleClozeToken(i: number) {
+    setHiddenTokens((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
+  function buildClozeQuestion(): string {
+    return clozeTokens.map((tok, i) => (hiddenTokens.has(i) ? `{{c::${tok}}}` : tok)).join("");
+  }
 
   // Image occlusion state
   const [occlusionFile, setOcclusionFile] = useState<File | null>(null);
@@ -58,6 +70,8 @@ function CriacaoPage() {
       setDeckPath("");
       setQuestion("");
       setAnswer("");
+      setClozeText("");
+      setHiddenTokens(new Set());
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       toast.success("Card adicionado");
@@ -133,27 +147,6 @@ function CriacaoPage() {
       window.removeEventListener("mouseup", handleWindowMouseUp);
     };
   }, [isDrawing]);
-
-  function wrapSelectionAsCloze() {
-    const el = questionInputRef.current;
-    if (!el) return;
-    const start = el.selectionStart ?? 0;
-    const end = el.selectionEnd ?? 0;
-    if (start === end) {
-      toast.error("Selecione a palavra ou trecho que quer esconder primeiro.");
-      return;
-    }
-    const before = question.slice(0, start);
-    const selected = question.slice(start, end);
-    const after = question.slice(end);
-    const marker = `{{c::${selected}}}`;
-    setQuestion(before + marker + after);
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = before.length + marker.length;
-      el.setSelectionRange(pos, pos);
-    });
-  }
 
   async function handlePasteButtonClick() {
     try {
@@ -258,16 +251,20 @@ function CriacaoPage() {
                     return;
                   }
 
-                  if (!question.trim() || (!cloze && !answer.trim())) return;
-                  if (cloze && !CLOZE_REGEX.test(question)) {
-                    toast.error("Marque pelo menos uma palavra com {{c::palavra}} antes de criar o card.");
+                  if (cloze) {
+                    if (!clozeText.trim() || !hasHiddenWord) {
+                      toast.error("Clique em pelo menos uma palavra da frase pra marcar como escondida.");
+                      return;
+                    }
+                  } else if (!question.trim() || !answer.trim()) {
                     return;
                   }
 
                   try {
                     const deckRow = await createNewDeck({ data: { path: deck } });
                     if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
-                    create.mutate({ deck_id: deckRow.id, pergunta: question.trim(), resposta: answer.trim(), invert, cloze });
+                    const pergunta = cloze ? buildClozeQuestion() : question.trim();
+                    create.mutate({ deck_id: deckRow.id, pergunta, resposta: answer.trim(), invert, cloze });
                   } catch (err: any) {
                     toast.error(err?.message ?? String(err));
                   }
@@ -396,31 +393,48 @@ function CriacaoPage() {
                 ) : cardType === "cloze" ? (
                   <div className="grid gap-2">
                     <label className="flex flex-col gap-2 text-sm text-muted-foreground">
-                      Pergunta
-                      <div className="flex gap-2">
-                        <Input
-                          ref={questionInputRef}
-                          value={question}
-                          onChange={(event) => setQuestion(event.target.value)}
-                          placeholder="Ex: A capital da França é {{c::Paris}}"
-                          className="flex-1"
-                        />
-                        <Button type="button" variant="outline" onClick={wrapSelectionAsCloze}>
-                          Marcar seleção
-                        </Button>
-                      </div>
+                      Frase
+                      <Input
+                        value={clozeText}
+                        onChange={(event) => {
+                          setClozeText(event.target.value);
+                          setHiddenTokens(new Set());
+                        }}
+                        placeholder="Ex: A capital da França é Paris"
+                      />
                     </label>
-                    <p className="text-xs text-muted-foreground">
-                      Selecione a palavra a esconder no campo e clique em "Marcar seleção" — ou digite{" "}
-                      <code className="rounded bg-muted px-1">{"{{c::palavra}}"}</code> manualmente. Pode marcar mais de uma no mesmo card.
-                    </p>
-                    {question.trim() !== "" && (
-                      <p className="text-xs text-muted-foreground">
-                        Pré-visualização:{" "}
-                        <span className="text-foreground">
-                          {hasClozeMarker ? question.replace(CLOZE_REGEX_G, "___") : "(nenhuma palavra marcada ainda)"}
-                        </span>
-                      </p>
+
+                    {clozeText.trim() !== "" && (
+                      <>
+                        <p className="text-xs text-muted-foreground">Clique nas palavras que quer esconder:</p>
+                        <p className="rounded-md border border-border p-3 text-sm leading-relaxed">
+                          {clozeTokens.map((tok, i) =>
+                            tok.trim() === "" ? (
+                              <span key={i}>{tok}</span>
+                            ) : (
+                              <span
+                                key={i}
+                                onClick={() => toggleClozeToken(i)}
+                                className={
+                                  hiddenTokens.has(i)
+                                    ? "cursor-pointer rounded bg-primary px-0.5 text-primary-foreground"
+                                    : "cursor-pointer rounded px-0.5 hover:bg-muted"
+                                }
+                              >
+                                {tok}
+                              </span>
+                            ),
+                          )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Pré-visualização:{" "}
+                          <span className="text-foreground">
+                            {hasHiddenWord
+                              ? clozeTokens.map((tok, i) => (hiddenTokens.has(i) ? "___" : tok)).join("")
+                              : "(nenhuma palavra marcada ainda)"}
+                          </span>
+                        </p>
+                      </>
                     )}
                   </div>
                 ) : (
@@ -457,7 +471,7 @@ function CriacaoPage() {
                     cardType === "oclusao"
                       ? uploading || !occlusionFile || regions.length === 0
                       : cloze
-                        ? create.isPending || !question.trim() || !hasClozeMarker
+                        ? create.isPending || !clozeText.trim() || !hasHiddenWord
                         : create.isPending || !question.trim() || !answer.trim()
                   }
                 >
