@@ -24,6 +24,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { getUserSettings } from "@/lib/user_settings.functions";
 
 const items = [
   { title: "Dashboard", icon: LayoutDashboard, to: "/" as const },
@@ -37,6 +40,14 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { user, signOut } = useAuth();
+  // Same query key the settings page uses, so saving a name or photo there
+  // updates this footer immediately without a reload.
+  const fetchSettings = useServerFn(getUserSettings);
+  const { data: settings } = useQuery({
+    queryKey: ["user_settings"],
+    queryFn: () => fetchSettings(),
+    enabled: !!user,
+  });
 
   return (
     <Sidebar collapsible="icon">
@@ -72,8 +83,16 @@ export function AppSidebar() {
           <SidebarMenuItem>
             {user ? (
               <SidebarMenuButton onClick={() => signOut()} tooltip="Sair">
-                <LogOut className="size-4" />
-                <span className="truncate">{user.email ?? "Sair"}</span>
+                {settings?.avatar_url ? (
+                  <img
+                    src={settings.avatar_url}
+                    alt=""
+                    className="size-4 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <LogOut className="size-4" />
+                )}
+                <span className="truncate">{settings?.display_name || user.email || "Sair"}</span>
               </SidebarMenuButton>
             ) : (
               <SidebarMenuButton asChild tooltip="Entrar">
