@@ -122,18 +122,30 @@ export const deleteDeck = createServerFn({ method: "POST" })
 
 export const updateDeck = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { id: string; name: string }) => {
+  .inputValidator((input: { id: string; name: string; daily_limit?: number | null }) => {
     const id = input.id?.trim();
     const name = input.name?.trim();
     if (!id) throw new Error("ID do deck inválido.");
     if (!name) throw new Error("Informe o nome do deck.");
     if (name.length > 80) throw new Error("Nome muito longo.");
-    return { id, name };
+    // undefined = leave as is · null = clear the limit · number = set it
+    let dailyLimit: number | null | undefined;
+    if (input.daily_limit === null) dailyLimit = null;
+    else if (typeof input.daily_limit === "number") {
+      if (!Number.isFinite(input.daily_limit) || input.daily_limit < 0)
+        throw new Error("Limite diário inválido.");
+      dailyLimit = Math.floor(input.daily_limit);
+    }
+    return { id, name, daily_limit: dailyLimit };
   })
   .handler(async ({ data, context }) => {
     const { data: row, error } = await context.supabase
       .from("decks")
-      .update({ name: data.name })
+      .update(
+        data.daily_limit === undefined
+          ? { name: data.name }
+          : { name: data.name, daily_limit: data.daily_limit },
+      )
       .eq("id", data.id)
       .select("*")
       .single();

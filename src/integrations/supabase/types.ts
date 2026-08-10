@@ -132,6 +132,7 @@ export type Database = {
           id: string;
           name: string;
           parent_id: string | null;
+          daily_limit: number | null;
           user_id: string;
         };
         Insert: {
@@ -139,6 +140,7 @@ export type Database = {
           id?: string;
           name: string;
           parent_id?: string | null;
+          daily_limit?: number | null;
           user_id: string;
         };
         Update: {
@@ -146,6 +148,7 @@ export type Database = {
           id?: string;
           name?: string;
           parent_id?: string | null;
+          daily_limit?: number | null;
           user_id?: string;
         };
         Relationships: [
@@ -167,6 +170,7 @@ export type Database = {
           display_name: string | null;
           avatar_url: string | null;
           streak: number;
+          daily_limit: number | null;
           user_id: string;
         };
         Insert: {
@@ -177,6 +181,7 @@ export type Database = {
           display_name?: string | null;
           avatar_url?: string | null;
           streak?: number;
+          daily_limit?: number | null;
           user_id: string;
         };
         Update: {
@@ -187,6 +192,7 @@ export type Database = {
           display_name?: string | null;
           avatar_url?: string | null;
           streak?: number;
+          daily_limit?: number | null;
           user_id?: string;
         };
         Relationships: [];

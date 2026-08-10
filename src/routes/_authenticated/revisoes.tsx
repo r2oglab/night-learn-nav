@@ -11,6 +11,8 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { listCards } from "@/lib/cards.functions";
 import { listDecks } from "@/lib/decks.functions";
+import { getUserSettings } from "@/lib/user_settings.functions";
+import { applyDailyLimits } from "@/lib/daily-limits";
 import { capitalizeFirst, cn } from "@/lib/utils";
 import ReviewSession, { type OcclusionRegion } from "@/components/review-session";
 
@@ -59,6 +61,12 @@ function RevisoesPage() {
   const { data: cards = [], isLoading: cardsLoading } = useQuery({
     queryKey: ["cards"],
     queryFn: () => fetchCards(),
+  });
+
+  const fetchSettings = useServerFn(getUserSettings);
+  const { data: settings } = useQuery({
+    queryKey: ["user_settings"],
+    queryFn: () => fetchSettings(),
   });
 
   const todayStart = new Date();
@@ -122,7 +130,26 @@ function RevisoesPage() {
         : null,
     }));
 
-  const reviewCount = cardsToReview.length;
+  const todayISO = `${todayStart.getFullYear()}-${String(todayStart.getMonth() + 1).padStart(2, "0")}-${String(todayStart.getDate()).padStart(2, "0")}`;
+
+  // Cards already reviewed today consume the same allowance, so reopening
+  // the app doesn't hand out a fresh quota.
+  const reviewedTodayDeckIds = cards
+    .filter((c) => (c.last_review ?? "").slice(0, 10) === todayISO)
+    .map((c) => c.deck_id);
+
+  const { allowed: limitedCards, blocked: blockedByLimit } = applyDailyLimits({
+    dueCards: cardsToReview,
+    decks,
+    globalLimit: settings?.daily_limit ?? null,
+    reviewedTodayDeckIds,
+  });
+
+  // Keep the enriched card objects (rootDeckName etc.) that the session needs.
+  const allowedIds = new Set(limitedCards.map((c) => c.id));
+  const queue = cardsToReview.filter((c) => allowedIds.has(c.id));
+
+  const reviewCount = queue.length;
   const [showSession, setShowSession] = useState(false);
 
   // Deck tree, mirroring the Flashcards tab so both tabs read the same way.
@@ -147,13 +174,13 @@ function RevisoesPage() {
   /** Cards due in this deck and everything under it. */
   function dueInSubtree(deckId: string) {
     const ids = new Set(collectDeckIds(deckId));
-    return cardsToReview.filter((c) => ids.has(c.deck_id));
+    return queue.filter((c) => ids.has(c.deck_id));
   }
 
   // Which subset the session runs on: null = the whole queue.
-  const [sessionCards, setSessionCards] = useState<typeof cardsToReview | null>(null);
+  const [sessionCards, setSessionCards] = useState<typeof queue | null>(null);
 
-  function startSession(subset: typeof cardsToReview) {
+  function startSession(subset: typeof queue) {
     if (subset.length === 0) {
       toast.info("Nenhum card para revisar neste deck.");
       return;
@@ -171,7 +198,7 @@ function RevisoesPage() {
     const children = childrenMap[deck.id] ?? [];
     const isOpen = !!openIds[deck.id];
     const subtreeDue = dueInSubtree(deck.id);
-    const ownDue = cardsToReview.filter((c) => c.deck_id === deck.id);
+    const ownDue = queue.filter((c) => c.deck_id === deck.id);
 
     return (
       <section key={deck.id} className="rounded-xl border border-border bg-card p-3">
@@ -262,7 +289,7 @@ function RevisoesPage() {
             <Separator orientation="vertical" className="h-5" />
             <h1 className="text-sm font-medium">Revisões</h1>
             <div className="ml-auto">
-              <Button variant="ghost" onClick={() => startSession(cardsToReview)}>
+              <Button variant="ghost" onClick={() => startSession(queue)}>
                 <Play className="size-4" />
                 <span className="ml-2">Começar</span>
               </Button>
@@ -274,7 +301,7 @@ function RevisoesPage() {
               {showSession && (
                 <div className="fixed inset-0 z-50">
                   <ReviewSession
-                    cards={sessionCards ?? cardsToReview}
+                    cards={sessionCards ?? queue}
                     onExit={() => setShowSession(false)}
                     onComplete={() => setShowSession(false)}
                   />
@@ -300,6 +327,9 @@ function RevisoesPage() {
                 <>
                   <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
                     <span>{reviewCount} cards para revisar hoje</span>
+                    {blockedByLimit > 0 && (
+                      <span className="text-xs">{blockedByLimit} além do limite diário</span>
+                    )}
                   </div>
                   <div className="space-y-3">
                     {roots.map((root) => (

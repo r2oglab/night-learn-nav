@@ -165,10 +165,12 @@ function FlashcardsPage() {
 
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
   const [editingDeckName, setEditingDeckName] = useState("");
+  const [editingDeckLimit, setEditingDeckLimit] = useState("");
 
   const updateDeckServer = useServerFn(updateDeck);
   const updateDeckMutation = useMutation({
-    mutationFn: (vars: { id: string; name: string }) => updateDeckServer({ data: vars }),
+    mutationFn: (vars: { id: string; name: string; daily_limit?: number | null }) =>
+      updateDeckServer({ data: vars }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       setEditingDeckId(null);
@@ -406,12 +408,34 @@ function FlashcardsPage() {
           </Button>
 
           {editingDeckId === deck.id ? (
-            <div className="flex items-center gap-2 w-full">
-              <Input value={editingDeckName} onChange={(e) => setEditingDeckName(e.target.value)} />
+            <div className="flex w-full flex-wrap items-end gap-2">
+              <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+                Nome
+                <Input
+                  value={editingDeckName}
+                  onChange={(e) => setEditingDeckName(e.target.value)}
+                />
+              </label>
+              <label className="flex w-36 flex-col gap-1 text-xs text-muted-foreground">
+                Limite/dia
+                <Input
+                  type="number"
+                  min={0}
+                  value={editingDeckLimit}
+                  onChange={(e) => setEditingDeckLimit(e.target.value)}
+                  placeholder="Sem limite"
+                />
+              </label>
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  onClick={() => updateDeckMutation.mutate({ id: deck.id, name: editingDeckName })}
+                  onClick={() =>
+                    updateDeckMutation.mutate({
+                      id: deck.id,
+                      name: editingDeckName,
+                      daily_limit: editingDeckLimit.trim() === "" ? null : Number(editingDeckLimit),
+                    })
+                  }
                 >
                   Salvar
                 </Button>
@@ -424,12 +448,18 @@ function FlashcardsPage() {
             <>
               <h3 className="text-sm font-medium">{deck.name}</h3>
               <span className="text-xs text-muted-foreground">{totalCardCount} card(s)</span>
+              {deck.daily_limit != null && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                  limite {deck.daily_limit}/dia
+                </span>
+              )}
               <div className="ml-auto flex items-center gap-3 text-xs">
                 <button
                   className="text-muted-foreground underline hover:text-foreground"
                   onClick={() => {
                     setEditingDeckId(deck.id);
                     setEditingDeckName(deck.name);
+                    setEditingDeckLimit(deck.daily_limit != null ? String(deck.daily_limit) : "");
                   }}
                 >
                   Editar

@@ -23,6 +23,7 @@ function Configuracoes() {
   const { user, signOut } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [dailyLimitInput, setDailyLimitInput] = useState("");
 
   const qc = useQueryClient();
   const fetchSettings = useServerFn(getUserSettings);
@@ -49,6 +50,10 @@ function Configuracoes() {
   useEffect(() => {
     if (settings?.display_name) setDisplayName(settings.display_name);
   }, [settings?.display_name]);
+
+  useEffect(() => {
+    setDailyLimitInput(settings?.daily_limit != null ? String(settings.daily_limit) : "");
+  }, [settings?.daily_limit]);
 
   async function handleAvatarUpload(file: File) {
     setUploadingAvatar(true);
@@ -196,6 +201,37 @@ function Configuracoes() {
                         (Atual: {settings?.daily_goal ?? 20})
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Alvo usado para colorir o mapa de calor. Não impede revisões.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <div className="text-sm text-muted-foreground">Limite diário (cards)</div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={dailyLimitInput}
+                        onChange={(e) => setDailyLimitInput(e.target.value)}
+                        placeholder="Sem limite"
+                        className="w-32"
+                      />
+                      <Button
+                        onClick={() =>
+                          upsertMutation.mutate({
+                            daily_limit:
+                              dailyLimitInput.trim() === "" ? null : Number(dailyLimitInput),
+                          })
+                        }
+                        disabled={upsertMutation.isPending}
+                      >
+                        Salvar limite
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Teto de revisões do dia somando todos os decks. Deixe vazio para não limitar.
+                    </p>
                   </div>
 
                   <div className="grid gap-2">
