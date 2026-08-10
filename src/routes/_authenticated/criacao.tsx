@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Loader2, ClipboardPaste, Maximize2, Upload } from "lucide-react";
+import { Plus, Loader2, ClipboardPaste, Maximize2, Upload, Sparkles } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +14,9 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
+import { generateCardsFromText } from "@/lib/ai.functions";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 import { ClozeEditor, buildClozeText } from "@/components/cloze-editor";
 import {
@@ -28,7 +31,7 @@ export const Route = createFileRoute("/_authenticated/criacao")({
   component: CriacaoPage,
 });
 
-type CardType = "simples" | "invertido" | "cloze" | "digitar" | "oclusao" | "importar";
+type CardType = "simples" | "invertido" | "cloze" | "digitar" | "oclusao" | "importar" | "ia";
 
 type DrawingRect = {
   startX: number;
@@ -88,6 +91,57 @@ function CriacaoPage() {
   const [csvUseTagsAsDeck, setCsvUseTagsAsDeck] = useState(false);
   const [importing, setImporting] = useState(false);
   const runImport = useServerFn(importCards);
+
+  // AI generation: proposals live in local state until the user accepts them,
+  // so nothing reaches the deck without a look first.
+  const runGenerate = useServerFn(generateCardsFromText);
+  const [aiSource, setAiSource] = useState("");
+  const [aiCount, setAiCount] = useState(12);
+  const [aiProposals, setAiProposals] = useState<{ pergunta: string; resposta: string }[] | null>(
+    null,
+  );
+  const [aiAccepted, setAiAccepted] = useState<Set<number>>(new Set());
+  const [generating, setGenerating] = useState(false);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      const result = await runGenerate({ data: { text: aiSource, count: aiCount } });
+      setAiProposals(result.cards);
+      // Everything starts checked: reviewing a list and unchecking the odd
+      // one out is less work than ticking twelve good cards by hand.
+      setAiAccepted(new Set(result.cards.map((_, i) => i)));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleAcceptGenerated(deck: string) {
+    if (!aiProposals) return;
+    const chosen = aiProposals.filter((_, i) => aiAccepted.has(i));
+    if (chosen.length === 0) {
+      toast.error("Selecione pelo menos um card.");
+      return;
+    }
+    setGenerating(true);
+    try {
+      const result = await runImport({
+        data: { cards: chosen.map((c) => ({ ...c, deckPath: deck })) },
+      });
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      toast.success(`${result.imported} card(s) criado(s)`);
+      setAiProposals(null);
+      setAiAccepted(new Set());
+      setAiSource("");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGenerating(false);
+    }
+  }
   const imageAreaRef = useRef<HTMLDivElement>(null);
 
   const create = useMutation({
@@ -383,6 +437,20 @@ function CriacaoPage() {
                   }
 
                   const deck = deckPath.trim();
+                  if (cardType === "ia") {
+                    // Generating needs no deck; only accepting the results does.
+                    if (!aiProposals) {
+                      await handleGenerate();
+                      return;
+                    }
+                    if (!deck) {
+                      toast.error("Informe o deck onde os cards serão criados.");
+                      return;
+                    }
+                    await handleAcceptGenerated(deck);
+                    return;
+                  }
+
                   if (!deck) {
                     toast.error("Informe o caminho do deck (ex: Deck::Subdeck)");
                     return;
@@ -469,12 +537,126 @@ function CriacaoPage() {
                     <span className="text-muted-foreground">Oclusão de imagem</span>
                   </label>
                   <label className="flex items-center gap-2 text-sm">
+                    <RadioGroupItem value="ia" />
+                    <span className="text-muted-foreground">Gerar com IA</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
                     <RadioGroupItem value="importar" />
                     <span className="text-muted-foreground">Importar CSV</span>
                   </label>
                 </RadioGroup>
 
-                {cardType === "importar" ? (
+                {cardType === "ia" ? (
+                  <div className="grid gap-3">
+                    {!aiProposals ? (
+                      <>
+                        <label className="flex flex-col gap-2 text-sm text-muted-foreground">
+                          Conteúdo (aula, resumo, problema de PBL...)
+                          <Textarea
+                            value={aiSource}
+                            onChange={(e) => setAiSource(e.target.value)}
+                            placeholder="Cole aqui o texto que deve virar flashcards..."
+                            className="min-h-40"
+                          />
+                        </label>
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <span className="text-muted-foreground">Máximo de cards:</span>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={40}
+                            value={aiCount}
+                            onChange={(e) => setAiCount(Number(e.target.value))}
+                            className="w-20"
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {aiSource.trim().length} caracteres
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>
+                            {aiAccepted.size} de {aiProposals.length} card(s) selecionado(s)
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              className="underline hover:text-foreground"
+                              onClick={() => setAiAccepted(new Set(aiProposals.map((_, i) => i)))}
+                            >
+                              Selecionar todos
+                            </button>
+                            <button
+                              type="button"
+                              className="underline hover:text-foreground"
+                              onClick={() => setAiAccepted(new Set())}
+                            >
+                              Limpar seleção
+                            </button>
+                            <button
+                              type="button"
+                              className="underline hover:text-foreground"
+                              onClick={() => {
+                                setAiProposals(null);
+                                setAiAccepted(new Set());
+                              }}
+                            >
+                              Gerar de novo
+                            </button>
+                          </div>
+                        </div>
+
+                        <ul className="space-y-2">
+                          {aiProposals.map((card, i) => (
+                            <li
+                              key={i}
+                              className="flex items-start gap-3 rounded-lg border border-border p-3"
+                            >
+                              <Checkbox
+                                checked={aiAccepted.has(i)}
+                                onCheckedChange={(v) =>
+                                  setAiAccepted((prev) => {
+                                    const next = new Set(prev);
+                                    if (v) next.add(i);
+                                    else next.delete(i);
+                                    return next;
+                                  })
+                                }
+                                className="mt-1"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <Input
+                                  value={card.pergunta}
+                                  onChange={(e) =>
+                                    setAiProposals((prev) =>
+                                      (prev ?? []).map((c, j) =>
+                                        j === i ? { ...c, pergunta: e.target.value } : c,
+                                      ),
+                                    )
+                                  }
+                                  className="mb-2 font-medium"
+                                />
+                                <Input
+                                  value={card.resposta}
+                                  onChange={(e) =>
+                                    setAiProposals((prev) =>
+                                      (prev ?? []).map((c, j) =>
+                                        j === i ? { ...c, resposta: e.target.value } : c,
+                                      ),
+                                    )
+                                  }
+                                  className="text-muted-foreground"
+                                />
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                ) : cardType === "importar" ? (
                   <div className="grid gap-3">
                     {!csvPreview ? (
                       <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -774,33 +956,44 @@ function CriacaoPage() {
                 <Button
                   type="submit"
                   disabled={
-                    cardType === "importar"
-                      ? importing || !csvPreview || csvPreview.length === 0
-                      : cardType === "oclusao"
-                        ? uploading || !occlusionFile || regions.length === 0
-                        : cloze
-                          ? create.isPending || !clozeText.trim() || !hasHiddenWord
-                          : create.isPending || !question.trim() || !answer.trim()
+                    cardType === "ia"
+                      ? generating ||
+                        (aiProposals ? aiAccepted.size === 0 : aiSource.trim().length < 40)
+                      : cardType === "importar"
+                        ? importing || !csvPreview || csvPreview.length === 0
+                        : cardType === "oclusao"
+                          ? uploading || !occlusionFile || regions.length === 0
+                          : cloze
+                            ? create.isPending || !clozeText.trim() || !hasHiddenWord
+                            : create.isPending || !question.trim() || !answer.trim()
                   }
                 >
                   {(
-                    cardType === "importar"
-                      ? importing
-                      : cardType === "oclusao"
-                        ? uploading
-                        : create.isPending
+                    cardType === "ia"
+                      ? generating
+                      : cardType === "importar"
+                        ? importing
+                        : cardType === "oclusao"
+                          ? uploading
+                          : create.isPending
                   ) ? (
                     <Loader2 className="size-4 animate-spin" />
+                  ) : cardType === "ia" ? (
+                    <Sparkles className="size-4" />
                   ) : cardType === "importar" ? (
                     <Upload className="size-4" />
                   ) : (
                     <Plus className="size-4" />
                   )}
-                  {cardType === "importar"
-                    ? `Importar ${csvPreview?.length ?? ""} card(s)`
-                    : cardType === "oclusao"
-                      ? `Criar ${regions.length || ""} card(s)`
-                      : "Criar card"}
+                  {cardType === "ia"
+                    ? aiProposals
+                      ? `Criar ${aiAccepted.size} card(s)`
+                      : "Gerar cards"
+                    : cardType === "importar"
+                      ? `Importar ${csvPreview?.length ?? ""} card(s)`
+                      : cardType === "oclusao"
+                        ? `Criar ${regions.length || ""} card(s)`
+                        : "Criar card"}
                 </Button>
               </form>
             </div>

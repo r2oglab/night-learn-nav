@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { X, Undo2, MoreVertical, CalendarClock } from "lucide-react";
+import { X, Undo2, MoreVertical, CalendarClock, Sparkles } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { reviewCard, undoReview, postponeCard } from "@/lib/cards.functions";
 import { Input } from "@/components/ui/input";
 import { compareAnswer, type DiffPart } from "@/lib/answer-diff";
+import { explainCard } from "@/lib/ai.functions";
 
 export type OcclusionRegion = {
   id: string;
@@ -63,6 +64,24 @@ export function ReviewSession({
   const typeInputRef = useRef<HTMLInputElement>(null);
   const undo = useServerFn(undoReview);
   const postpone = useServerFn(postponeCard);
+  const explain = useServerFn(explainCard);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explaining, setExplaining] = useState(false);
+
+  async function handleExplain() {
+    if (!current || explaining) return;
+    setExplaining(true);
+    try {
+      const result = await explain({
+        data: { pergunta: current.pergunta, resposta: current.resposta },
+      });
+      setExplanation(result.explanation);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExplaining(false);
+    }
+  }
   // Which card the last grading applied to, so undo knows what to roll back
   // even though `index` has already moved on.
   const [lastGraded, setLastGraded] = useState<{
@@ -112,6 +131,7 @@ export function ReviewSession({
       void qc.invalidateQueries({ queryKey: ["cards"] });
       setRevealed(false);
       setTypedAnswer("");
+      setExplanation(null);
       const next = index + 1;
       setIndex(next);
       if (next >= sessionCards.length) setFinished(true);
@@ -156,6 +176,7 @@ export function ReviewSession({
       setFinished(false);
       setRevealed(false);
       setTypedAnswer("");
+      setExplanation(null);
       setLastGraded(null);
       toast.success("Avaliação desfeita");
     } catch (err: unknown) {
@@ -210,6 +231,7 @@ export function ReviewSession({
       setLastGraded({ id: current.id, deckName, subdeckName, wasCorrect: isCorrect });
       setRevealed(false);
       setTypedAnswer("");
+      setExplanation(null);
       const next = index + 1;
       setIndex(next);
       if (next >= sessionCards.length) {
@@ -514,6 +536,32 @@ export function ReviewSession({
               </>
             )}
           </div>
+
+          {revealed && (
+            <div className="grid gap-2">
+              {explanation ? (
+                <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
+                  <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <Sparkles className="size-3.5" /> Explicação
+                  </div>
+                  <div className="whitespace-pre-wrap leading-relaxed">{explanation}</div>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  disabled={explaining}
+                  onClick={() => void handleExplain()}
+                >
+                  <Sparkles className="size-3.5" />
+                  <span className="ml-1.5">
+                    {explaining ? "Explicando..." : "Explicar assunto"}
+                  </span>
+                </Button>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             {!revealed ? (
