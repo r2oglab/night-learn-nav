@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { CalendarClock, Loader2, Play } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronRight, Loader2, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -125,11 +125,130 @@ function RevisoesPage() {
   const reviewCount = cardsToReview.length;
   const [showSession, setShowSession] = useState(false);
 
-  const groupsByRootDeck = new Map<string, typeof cardsToReview>();
-  for (const card of cardsToReview) {
-    const group = groupsByRootDeck.get(card.rootDeckName) ?? [];
-    group.push(card);
-    groupsByRootDeck.set(card.rootDeckName, group);
+  // Deck tree, mirroring the Flashcards tab so both tabs read the same way.
+  const childrenMap: Record<string, any[]> = {};
+  for (const d of decks) {
+    const pid = d.parent_id ?? "__root";
+    childrenMap[pid] = childrenMap[pid] || [];
+    childrenMap[pid].push(d);
+  }
+  const roots = childrenMap["__root"] ?? [];
+
+  const [openIds, setOpenIds] = useState<Record<string, boolean>>({});
+  const toggle = (id: string) => setOpenIds((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  /** Every deck id in a subtree, so a parent can study its children too. */
+  function collectDeckIds(deckId: string): string[] {
+    const ids = [deckId];
+    for (const child of childrenMap[deckId] ?? []) ids.push(...collectDeckIds(child.id));
+    return ids;
+  }
+
+  /** Cards due in this deck and everything under it. */
+  function dueInSubtree(deckId: string) {
+    const ids = new Set(collectDeckIds(deckId));
+    return cardsToReview.filter((c) => ids.has(c.deck_id));
+  }
+
+  // Which subset the session runs on: null = the whole queue.
+  const [sessionCards, setSessionCards] = useState<typeof cardsToReview | null>(null);
+
+  function startSession(subset: typeof cardsToReview) {
+    if (subset.length === 0) {
+      toast.info("Nenhum card para revisar neste deck.");
+      return;
+    }
+    setSessionCards(subset);
+    setShowSession(true);
+  }
+
+  /**
+   * One deck in the tree: its own due cards when expanded, its subdecks
+   * nested below, and a count that includes the whole subtree — the number
+   * you'd actually face if you hit "Estudar" on this row.
+   */
+  function renderDeckNode(deck: any, level = 0) {
+    const children = childrenMap[deck.id] ?? [];
+    const isOpen = !!openIds[deck.id];
+    const subtreeDue = dueInSubtree(deck.id);
+    const ownDue = cardsToReview.filter((c) => c.deck_id === deck.id);
+
+    return (
+      <section key={deck.id} className="rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <Button size="sm" variant="ghost" onClick={() => toggle(deck.id)}>
+            {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          </Button>
+          <h3 className="text-sm font-medium">{deck.name}</h3>
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-xs",
+              subtreeDue.length > 0 ? "bg-primary/15 text-primary" : "text-muted-foreground",
+            )}
+          >
+            {subtreeDue.length} para hoje
+          </span>
+          <div className="ml-auto">
+            <Button
+              size="sm"
+              variant={subtreeDue.length > 0 ? "default" : "ghost"}
+              disabled={subtreeDue.length === 0}
+              onClick={() => startSession(subtreeDue)}
+            >
+              <Play className="size-3.5" />
+              <span className="ml-1.5">Estudar</span>
+            </Button>
+          </div>
+        </div>
+
+        {isOpen && (
+          <div className="mt-3 space-y-3">
+            {ownDue.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum card deste deck para hoje.</p>
+            ) : (
+              <ul className="space-y-3">
+                {ownDue.map((card) => {
+                  const diff = daysUntil(card.due);
+                  return (
+                    <li
+                      key={card.id}
+                      className="rounded-xl border border-border bg-background p-3 sm:p-4"
+                    >
+                      <div className="flex flex-wrap items-center gap-3">
+                        <p className="font-medium">{card.pergunta}</p>
+                        <span
+                          className={cn(
+                            "flex items-center gap-1.5 text-xs",
+                            diff < 0 ? "text-overdue" : "text-muted-foreground",
+                          )}
+                        >
+                          <CalendarClock className="size-3.5" />
+                          {capitalizeFirst(dateFormatter.format(new Date(`${card.due}T00:00:00`)))}
+                          {" · "}
+                          {diff === 0
+                            ? "hoje"
+                            : diff > 0
+                              ? `em ${diff} dia(s)`
+                              : `atrasado ${Math.abs(diff)} dia(s)`}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {children.length > 0 && (
+              <div className="space-y-3 pl-6">
+                {children.map((child) => (
+                  <div key={child.id}>{renderDeckNode(child, level + 1)}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    );
   }
 
   return (
@@ -143,16 +262,7 @@ function RevisoesPage() {
             <Separator orientation="vertical" className="h-5" />
             <h1 className="text-sm font-medium">Revisões</h1>
             <div className="ml-auto">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (reviewCount === 0) {
-                    toast.info("Nenhum card para revisar hoje.");
-                    return;
-                  }
-                  setShowSession(true);
-                }}
-              >
+              <Button variant="ghost" onClick={() => startSession(cardsToReview)}>
                 <Play className="size-4" />
                 <span className="ml-2">Começar</span>
               </Button>
@@ -164,7 +274,7 @@ function RevisoesPage() {
               {showSession && (
                 <div className="fixed inset-0 z-50">
                   <ReviewSession
-                    cards={cardsToReview}
+                    cards={sessionCards ?? cardsToReview}
                     onExit={() => setShowSession(false)}
                     onComplete={() => setShowSession(false)}
                   />
@@ -188,49 +298,12 @@ function RevisoesPage() {
                 </p>
               ) : (
                 <>
-                  <div className="mb-4 text-sm text-muted-foreground">
-                    {reviewCount} cards para revisar hoje
+                  <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
+                    <span>{reviewCount} cards para revisar hoje</span>
                   </div>
-                  <div className="space-y-6">
-                    {Array.from(groupsByRootDeck.entries()).map(([rootName, groupCards]) => (
-                      <div key={rootName}>
-                        <h3 className="mb-2 text-sm font-semibold">{rootName}</h3>
-                        <ul className="space-y-3">
-                          {groupCards.map((card) => {
-                            const diff = daysUntil(card.due);
-                            return (
-                              <li
-                                key={card.id}
-                                className="rounded-xl border border-border bg-card p-4"
-                              >
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <p className="font-medium">{card.pergunta}</p>
-                                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
-                                    {deckMap[card.deck_id] ?? "Deck desconhecido"}
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      "flex items-center gap-1.5 text-xs",
-                                      diff < 0 ? "text-overdue" : "text-muted-foreground",
-                                    )}
-                                  >
-                                    <CalendarClock className="size-3.5" />
-                                    {capitalizeFirst(
-                                      dateFormatter.format(new Date(`${card.due}T00:00:00`)),
-                                    )}
-                                    {" · "}
-                                    {diff === 0
-                                      ? "hoje"
-                                      : diff > 0
-                                        ? `em ${diff} dia(s)`
-                                        : `atrasado ${Math.abs(diff)} dia(s)`}
-                                  </span>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
+                  <div className="space-y-3">
+                    {roots.map((root) => (
+                      <div key={root.id}>{renderDeckNode(root)}</div>
                     ))}
                   </div>
                 </>

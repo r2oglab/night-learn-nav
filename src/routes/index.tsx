@@ -265,6 +265,57 @@ function Index() {
     },
   });
 
+  /**
+   * How many cards fall due on each of the next 14 days.
+   *
+   * Suspended cards are excluded because they won't actually surface, and
+   * anything already overdue is folded into "hoje" — that's when you'd face
+   * it, regardless of the date printed on the row.
+   */
+  const { data: forecast = [] } = useQuery({
+    queryKey: ["review-forecast", heatEndISO],
+    enabled: dateReady,
+    queryFn: async () => {
+      const horizon = new Date(`${heatEndISO}T00:00:00`);
+      horizon.setDate(horizon.getDate() + 14);
+      const horizonISO = horizon.toISOString().slice(0, 10);
+
+      const { data, error } = await supabase
+        .from("cards")
+        .select("due")
+        .eq("suspended", false)
+        .lt("due", horizonISO);
+      if (error) throw error;
+
+      const counts = new Map<string, number>();
+      for (const row of data ?? []) {
+        // Overdue collapses onto today rather than showing a past date.
+        const key = row.due < heatEndISO ? heatEndISO : row.due;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+
+      const days: { date: string; label: string; count: number }[] = [];
+      for (let i = 0; i < 14; i++) {
+        const d = new Date(`${heatEndISO}T00:00:00`);
+        d.setDate(d.getDate() + i);
+        const iso = d.toISOString().slice(0, 10);
+        days.push({
+          date: iso,
+          label:
+            i === 0
+              ? "Hoje"
+              : capitalizeFirst(
+                  d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit" }),
+                ),
+          count: counts.get(iso) ?? 0,
+        });
+      }
+      return days;
+    },
+  });
+
+  const forecastMax = Math.max(1, ...forecast.map((d) => d.count));
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background text-foreground">
@@ -546,6 +597,42 @@ function Index() {
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* Upcoming workload: helps plan around exam weeks. */}
+                <div className="mt-4 rounded-xl border border-border bg-card p-4">
+                  <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
+                  {forecast.every((d) => d.count === 0) ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nada agendado para os próximos 14 dias.
+                    </p>
+                  ) : (
+                    <div className="flex items-end gap-1 overflow-x-auto">
+                      {forecast.map((day) => (
+                        <div
+                          key={day.date}
+                          className="flex min-w-[38px] flex-1 flex-col items-center gap-1"
+                          title={`${day.count} card(s)`}
+                        >
+                          <span className="text-[10px] text-muted-foreground">
+                            {day.count > 0 ? day.count : ""}
+                          </span>
+                          <div
+                            className={cn(
+                              "w-full rounded-t",
+                              day.count > 0 ? "bg-primary" : "bg-muted",
+                            )}
+                            style={{
+                              height: `${Math.max(day.count > 0 ? 6 : 2, (day.count / forecastMax) * 80)}px`,
+                            }}
+                          />
+                          <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                            {day.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </main>

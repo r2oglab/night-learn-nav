@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -210,6 +210,29 @@ function FlashcardsPage() {
     return parts.reverse().join("::");
   };
 
+  const [query, setQuery] = useState("");
+
+  /**
+   * Accent- and case-insensitive matching: searching "celula" should find
+   * "célula", which is the common case when typing quickly in Portuguese.
+   */
+  const normalizeForSearch = (v: string) =>
+    v
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  const searchResults = (() => {
+    const q = normalizeForSearch(query.trim());
+    if (!q) return null;
+    return cards.filter((c: any) => {
+      const haystack = normalizeForSearch(
+        `${c.pergunta ?? ""} ${c.resposta ?? ""} ${getPath(c.deck_id)}`,
+      );
+      return haystack.includes(q);
+    });
+  })();
+
   const [openIds, setOpenIds] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setOpenIds((s) => ({ ...s, [id]: !s[id] }));
 
@@ -220,6 +243,147 @@ function FlashcardsPage() {
     }
     return ids;
   };
+
+  /** One card row: shared by the deck tree and the search results. */
+  function renderCardRow(card: any) {
+    return (
+      <li
+        key={card.id}
+        className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+      >
+        {editingId === card.id ? (
+          <div className="flex-1">
+            {editingIsCloze ? (
+              <ClozeEditor
+                text={editingClozeText}
+                hidden={editingClozeHidden}
+                onTextChange={(v) => {
+                  setEditingClozeText(v);
+                  setEditingClozeHidden(new Set());
+                }}
+                onToggleToken={(i) =>
+                  setEditingClozeHidden((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(i)) next.delete(i);
+                    else next.add(i);
+                    return next;
+                  })
+                }
+              />
+            ) : (
+              <label className="flex flex-col gap-2">
+                <Input
+                  value={editingQuestion}
+                  onChange={(e) => setEditingQuestion(e.target.value)}
+                />
+                <Input value={editingAnswer} onChange={(e) => setEditingAnswer(e.target.value)} />
+              </label>
+            )}
+            <div className="mt-2 flex gap-2">
+              <Button
+                size="sm"
+                disabled={
+                  updateMutation.isPending ||
+                  (editingIsCloze && (!editingClozeText.trim() || editingClozeHidden.size === 0))
+                }
+                onClick={() => {
+                  if (editingIsCloze) {
+                    const stored = buildClozeText(editingClozeText, editingClozeHidden);
+                    updateMutation.mutate({
+                      id: card.id,
+                      pergunta: stored,
+                      resposta: stored,
+                    });
+                  } else {
+                    updateMutation.mutate({
+                      id: card.id,
+                      pergunta: editingQuestion,
+                      resposta: editingAnswer,
+                    });
+                  }
+                }}
+              >
+                Salvar
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className={card.suspended ? "opacity-50" : undefined}>
+              {card.suspended && (
+                <span className="mb-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                  Suspenso
+                </span>
+              )}
+              {isClozeText(card.pergunta) ? (
+                <>
+                  <p className="font-medium">{maskCloze(card.pergunta)}</p>
+                  <p className="text-sm text-muted-foreground">{revealCloze(card.pergunta)}</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium">{card.pergunta}</p>
+                  <p className="text-sm text-muted-foreground">{card.resposta}</p>
+                </>
+              )}
+              <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              {card.image_url ? (
+                <button
+                  className="text-muted-foreground underline hover:text-foreground"
+                  onClick={() => setOcclusionCard(card)}
+                >
+                  Editar áreas
+                </button>
+              ) : (
+                <button
+                  className="text-muted-foreground underline hover:text-foreground"
+                  onClick={() => startEditingCard(card)}
+                >
+                  Editar
+                </button>
+              )}
+              <button
+                className="text-muted-foreground underline hover:text-foreground"
+                onClick={() => {
+                  const input = window.prompt("Adiar por quantos dias?", "1");
+                  if (input === null) return;
+                  const days = Number(input);
+                  if (!Number.isFinite(days) || days < 1) {
+                    toast.error("Informe um número de dias válido.");
+                    return;
+                  }
+                  postponeMutation.mutate({ id: card.id, days: Math.round(days) });
+                }}
+              >
+                Adiar
+              </button>
+              <button
+                className="text-muted-foreground underline hover:text-foreground"
+                onClick={() => suspendMutation.mutate({ id: card.id, suspended: !card.suspended })}
+              >
+                {card.suspended ? "Reativar" : "Suspender"}
+              </button>
+              <button
+                className="text-destructive underline hover:text-destructive/80 disabled:opacity-50"
+                disabled={delMutation.isPending}
+                onClick={() => {
+                  const ok = window.confirm(`Excluir o card "${card.pergunta}"?`);
+                  if (ok) delMutation.mutate(card.id);
+                }}
+              >
+                Excluir
+              </button>
+            </div>
+          </>
+        )}
+      </li>
+    );
+  }
 
   // Rendered as a plain function call, not <TreeNode/>: this closure is
   // recreated on every render of FlashcardsPage, so as a JSX element React
@@ -293,155 +457,7 @@ function FlashcardsPage() {
           (deckCards.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum card neste deck.</p>
           ) : (
-            <ul className="space-y-3">
-              {deckCards.map((card: any) => (
-                <li
-                  key={card.id}
-                  className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
-                >
-                  {editingId === card.id ? (
-                    <div className="flex-1">
-                      {editingIsCloze ? (
-                        <ClozeEditor
-                          text={editingClozeText}
-                          hidden={editingClozeHidden}
-                          onTextChange={(v) => {
-                            setEditingClozeText(v);
-                            setEditingClozeHidden(new Set());
-                          }}
-                          onToggleToken={(i) =>
-                            setEditingClozeHidden((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(i)) next.delete(i);
-                              else next.add(i);
-                              return next;
-                            })
-                          }
-                        />
-                      ) : (
-                        <label className="flex flex-col gap-2">
-                          <Input
-                            value={editingQuestion}
-                            onChange={(e) => setEditingQuestion(e.target.value)}
-                          />
-                          <Input
-                            value={editingAnswer}
-                            onChange={(e) => setEditingAnswer(e.target.value)}
-                          />
-                        </label>
-                      )}
-                      <div className="mt-2 flex gap-2">
-                        <Button
-                          size="sm"
-                          disabled={
-                            updateMutation.isPending ||
-                            (editingIsCloze &&
-                              (!editingClozeText.trim() || editingClozeHidden.size === 0))
-                          }
-                          onClick={() => {
-                            if (editingIsCloze) {
-                              const stored = buildClozeText(editingClozeText, editingClozeHidden);
-                              updateMutation.mutate({
-                                id: card.id,
-                                pergunta: stored,
-                                resposta: stored,
-                              });
-                            } else {
-                              updateMutation.mutate({
-                                id: card.id,
-                                pergunta: editingQuestion,
-                                resposta: editingAnswer,
-                              });
-                            }
-                          }}
-                        >
-                          Salvar
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className={card.suspended ? "opacity-50" : undefined}>
-                        {card.suspended && (
-                          <span className="mb-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                            Suspenso
-                          </span>
-                        )}
-                        {isClozeText(card.pergunta) ? (
-                          <>
-                            <p className="font-medium">{maskCloze(card.pergunta)}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {revealCloze(card.pergunta)}
-                            </p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="font-medium">{card.pergunta}</p>
-                            <p className="text-sm text-muted-foreground">{card.resposta}</p>
-                          </>
-                        )}
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {getPath(card.deck_id)}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs">
-                        {card.image_url ? (
-                          <button
-                            className="text-muted-foreground underline hover:text-foreground"
-                            onClick={() => setOcclusionCard(card)}
-                          >
-                            Editar áreas
-                          </button>
-                        ) : (
-                          <button
-                            className="text-muted-foreground underline hover:text-foreground"
-                            onClick={() => startEditingCard(card)}
-                          >
-                            Editar
-                          </button>
-                        )}
-                        <button
-                          className="text-muted-foreground underline hover:text-foreground"
-                          onClick={() => {
-                            const input = window.prompt("Adiar por quantos dias?", "1");
-                            if (input === null) return;
-                            const days = Number(input);
-                            if (!Number.isFinite(days) || days < 1) {
-                              toast.error("Informe um número de dias válido.");
-                              return;
-                            }
-                            postponeMutation.mutate({ id: card.id, days: Math.round(days) });
-                          }}
-                        >
-                          Adiar
-                        </button>
-                        <button
-                          className="text-muted-foreground underline hover:text-foreground"
-                          onClick={() =>
-                            suspendMutation.mutate({ id: card.id, suspended: !card.suspended })
-                          }
-                        >
-                          {card.suspended ? "Reativar" : "Suspender"}
-                        </button>
-                        <button
-                          className="text-destructive underline hover:text-destructive/80 disabled:opacity-50"
-                          disabled={delMutation.isPending}
-                          onClick={() => {
-                            const ok = window.confirm(`Excluir o card "${card.pergunta}"?`);
-                            if (ok) delMutation.mutate(card.id);
-                          }}
-                        >
-                          Excluir
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <ul className="space-y-3">{deckCards.map((card: any) => renderCardRow(card))}</ul>
           ))}
 
         {/* Render subdecks below, when expanded */}
@@ -504,9 +520,44 @@ function FlashcardsPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {roots.map((root) => (
-                    <div key={root.id}>{renderTreeNode(root)}</div>
-                  ))}
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Buscar em perguntas, respostas e decks..."
+                      className="pl-9 pr-9"
+                    />
+                    {query && (
+                      <button
+                        type="button"
+                        onClick={() => setQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="size-4" />
+                        <span className="sr-only">Limpar busca</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {searchResults ? (
+                    searchResults.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                        Nenhum card encontrado para "{query}".
+                      </p>
+                    ) : (
+                      <div className="rounded-xl border border-border bg-card p-3">
+                        <p className="mb-3 text-xs text-muted-foreground">
+                          {searchResults.length} card(s) encontrado(s)
+                        </p>
+                        <ul className="space-y-3">
+                          {searchResults.map((card: any) => renderCardRow(card))}
+                        </ul>
+                      </div>
+                    )
+                  ) : (
+                    roots.map((root) => <div key={root.id}>{renderTreeNode(root)}</div>)
+                  )}
                 </div>
               )}
             </div>
