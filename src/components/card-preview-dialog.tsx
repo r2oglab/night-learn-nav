@@ -1,0 +1,148 @@
+import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { Sparkles, Eye } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { explainCard } from "@/lib/ai.functions";
+import { isClozeText, maskCloze, revealCloze } from "@/components/cloze-editor";
+
+export type PreviewCard = {
+  pergunta: string;
+  resposta: string;
+  image_url?: string | null;
+  occlusion_regions?: { id: string; x: number; y: number; width: number; height: number }[] | null;
+  occlusion_target_id?: string | null;
+  card_type?: string | null;
+};
+
+/**
+ * Shows a card the way it will actually appear during review, plus an
+ * on-demand AI explanation.
+ *
+ * Until now the only way to see the rendered result was to start a review
+ * session — which meant you couldn't check a card before committing to it,
+ * and checking an existing one disturbed its scheduling.
+ */
+export function CardPreviewDialog({
+  card,
+  open,
+  onOpenChange,
+}: {
+  card: PreviewCard | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explaining, setExplaining] = useState(false);
+  const explain = useServerFn(explainCard);
+
+  // A new card means a fresh preview: nothing revealed, no stale explanation.
+  useEffect(() => {
+    setRevealed(false);
+    setExplanation(null);
+  }, [card?.pergunta, card?.resposta, open]);
+
+  async function handleExplain() {
+    if (!card || explaining) return;
+    setExplaining(true);
+    try {
+      const result = await explain({
+        data: { pergunta: card.pergunta, resposta: card.resposta },
+      });
+      setExplanation(result.explanation);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExplaining(false);
+    }
+  }
+
+  if (!card) return null;
+
+  const cloze = isClozeText(card.pergunta);
+  const front = cloze ? maskCloze(card.pergunta) : card.pergunta;
+  const back = cloze ? revealCloze(card.pergunta) : card.resposta;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Eye className="size-4" /> Prévia do card
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          <div className="rounded-lg border border-border p-4">
+            {card.image_url ? (
+              <div className="relative w-full overflow-hidden rounded-lg">
+                <img src={card.image_url} alt="" className="block w-full" />
+                {(card.occlusion_regions ?? []).map((region) => {
+                  const isTarget = region.id === card.occlusion_target_id;
+                  if (revealed && isTarget) return null;
+                  return (
+                    <div
+                      key={region.id}
+                      className={`absolute border-2 ${
+                        isTarget ? "border-sky-600 bg-sky-500" : "border-amber-600 bg-amber-400"
+                      }`}
+                      style={{
+                        left: `${region.x}%`,
+                        top: `${region.y}%`,
+                        width: `${region.width}%`,
+                        height: `${region.height}%`,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <>
+                <div className="mb-2 text-xs text-muted-foreground">Frente</div>
+                <div className="whitespace-pre-wrap text-base">{front}</div>
+              </>
+            )}
+
+            {revealed && (
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="mb-2 text-xs text-muted-foreground">Verso</div>
+                <div className="whitespace-pre-wrap text-base">{back}</div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setRevealed((v) => !v)}>
+              {revealed ? "Ocultar resposta" : "Revelar resposta"}
+            </Button>
+            {!explanation && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={explaining}
+                onClick={() => void handleExplain()}
+              >
+                <Sparkles className="size-3.5" />
+                <span className="ml-1.5">{explaining ? "Explicando..." : "Explicar assunto"}</span>
+              </Button>
+            )}
+          </div>
+
+          {explanation && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
+              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <Sparkles className="size-3.5" /> Explicação
+              </div>
+              <div className="whitespace-pre-wrap leading-relaxed">{explanation}</div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default CardPreviewDialog;

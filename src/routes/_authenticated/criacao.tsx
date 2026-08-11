@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Plus, Loader2, ClipboardPaste, Maximize2, Upload, Sparkles } from "lucide-react";
+import { Plus, Loader2, ClipboardPaste, Maximize2, Upload, Sparkles, Eye } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.
 import { createDeck } from "@/lib/decks.functions";
 import { generateCardsFromText } from "@/lib/ai.functions";
 import { Textarea } from "@/components/ui/textarea";
+import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 import { ClozeEditor, buildClozeText } from "@/components/cloze-editor";
@@ -102,6 +103,7 @@ function CriacaoPage() {
   );
   const [aiAccepted, setAiAccepted] = useState<Set<number>>(new Set());
   const [generating, setGenerating] = useState(false);
+  const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
 
   async function handleGenerate() {
     setGenerating(true);
@@ -409,6 +411,13 @@ function CriacaoPage() {
 
           <main className="flex flex-1 justify-center p-3 sm:p-6">
             <div className="w-full max-w-3xl">
+              <CardPreviewDialog
+                card={previewCard}
+                open={previewCard !== null}
+                onOpenChange={(o) => {
+                  if (!o) setPreviewCard(null);
+                }}
+              />
               {editorOpen && occlusionImageUrl && (
                 <ImageOcclusionEditor
                   imageUrl={occlusionImageUrl}
@@ -643,17 +652,29 @@ function CriacaoPage() {
                                 className="mt-1"
                               />
                               <div className="min-w-0 flex-1">
-                                <Input
-                                  value={card.pergunta}
-                                  onChange={(e) =>
-                                    setAiProposals((prev) =>
-                                      (prev ?? []).map((c, j) =>
-                                        j === i ? { ...c, pergunta: e.target.value } : c,
-                                      ),
-                                    )
-                                  }
-                                  className="mb-2 font-medium"
-                                />
+                                <div className="mb-2 flex items-start gap-2">
+                                  <Input
+                                    value={card.pergunta}
+                                    onChange={(e) =>
+                                      setAiProposals((prev) =>
+                                        (prev ?? []).map((c, j) =>
+                                          j === i ? { ...c, pergunta: e.target.value } : c,
+                                        ),
+                                      )
+                                    }
+                                    className="font-medium"
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="shrink-0"
+                                    onClick={() => setPreviewCard(card)}
+                                  >
+                                    <Eye className="size-3.5" />
+                                    <span className="ml-1">Ver</span>
+                                  </Button>
+                                </div>
                                 <Input
                                   value={card.resposta}
                                   onChange={(e) =>

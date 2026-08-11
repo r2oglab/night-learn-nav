@@ -20,6 +20,7 @@ import {
   setCardSuspended,
 } from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
+import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 import {
   ClozeEditor,
@@ -211,6 +212,8 @@ function FlashcardsPage() {
     }
     return parts.reverse().join("::");
   };
+
+  const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
 
   const [query, setQuery] = useState("");
 
@@ -517,6 +520,13 @@ function FlashcardsPage() {
 
           <main className="flex flex-1 justify-center p-3 sm:p-6">
             <div className="w-full max-w-3xl">
+              <CardPreviewDialog
+                card={previewCard}
+                open={previewCard !== null}
+                onOpenChange={(o) => {
+                  if (!o) setPreviewCard(null);
+                }}
+              />
               {occlusionCard && (
                 <ImageOcclusionEditor
                   imageUrl={occlusionCard.image_url}
