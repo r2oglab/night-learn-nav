@@ -164,7 +164,11 @@ export const generateCardsFromText = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const raw = await callAi(
       GENERATE_SYSTEM,
-      `Crie no máximo ${data.count} flashcards a partir do material abaixo.\n\n---\n${data.text}\n---`,
+      // Asking for an exact number matters: "no máximo N" was read as an
+      // upper bound and consistently came back short of what was requested.
+      `Crie EXATAMENTE ${data.count} flashcards a partir do material abaixo. ` +
+        `Não devolva menos que ${data.count}, a não ser que o material realmente não dê para tanto — ` +
+        `nesse caso, devolva quantos forem possíveis sem repetir conteúdo nem inventar informação.\n\n---\n${data.text}\n---`,
       8000,
     );
 

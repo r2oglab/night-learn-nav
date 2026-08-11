@@ -101,6 +101,7 @@ function Index() {
       const { data: dueData, error: dueError } = await supabase
         .from("cards")
         .select("id, deck_id, pergunta, resposta, due, state, last_review, decks(name)")
+        .eq("suspended", false)
         .gte("due", start)
         .lte("due", end)
         .order("due", { ascending: true });
@@ -259,6 +260,9 @@ function Index() {
       const { count, error } = await supabase
         .from("cards")
         .select("id", { count: "exact", head: true })
+        // Suspended cards are deliberately parked; counting them here would
+        // nag about work the review queue won't even offer.
+        .eq("suspended", false)
         .lt("due", heatEndISO);
       if (error) throw error;
       return count ?? 0;

@@ -560,14 +560,30 @@ function CriacaoPage() {
                           />
                         </label>
                         <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="text-muted-foreground">Máximo de cards:</span>
+                          <span className="text-muted-foreground">Quantos cards:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {[5, 10, 15, 20, 30].map((n) => (
+                              <Button
+                                key={n}
+                                type="button"
+                                size="sm"
+                                variant={aiCount === n ? "default" : "outline"}
+                                onClick={() => setAiCount(n)}
+                              >
+                                {n}
+                              </Button>
+                            ))}
+                          </div>
                           <Input
                             type="number"
                             min={1}
                             max={40}
                             value={aiCount}
-                            onChange={(e) => setAiCount(Number(e.target.value))}
+                            onChange={(e) =>
+                              setAiCount(Math.min(40, Math.max(1, Number(e.target.value) || 1)))
+                            }
                             className="w-20"
+                            aria-label="Quantidade personalizada"
                           />
                           <span className="text-xs text-muted-foreground">
                             {aiSource.trim().length} caracteres
