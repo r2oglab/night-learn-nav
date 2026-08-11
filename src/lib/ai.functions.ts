@@ -21,7 +21,9 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
-const GEMINI_MODEL = process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash";
+// GA as of Aug/2026 — the gemini-2.5-* line was retired for new accounts.
+// Cheaper/faster alternative: set GEMINI_MODEL to "gemini-3.5-flash-lite".
+const GEMINI_MODEL = process.env["GEMINI_MODEL"] ?? "gemini-3.6-flash";
 const ANTHROPIC_MODEL = process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-5";
 
 type AnthropicBlock = { type: string; text?: string };
@@ -33,24 +35,32 @@ async function callGemini(
   user: string,
   maxTokens: number,
 ): Promise<string> {
-  const response = await fetch(
-    `${GEMINI_URL}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: "user", parts: [{ text: user }] }],
-        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.4 },
-      }),
+  const response = await fetch(`${GEMINI_URL}/${GEMINI_MODEL}:generateContent`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      // Key goes in a header rather than the query string, so it can't leak
+      // into request logs or proxy history.
+      "x-goog-api-key": apiKey,
     },
-  );
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      // temperature/top_p/top_k are deprecated on Gemini 3.x — omitted on purpose.
+      generationConfig: { maxOutputTokens: maxTokens },
+    }),
+  });
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     // 429 on the free tier means the daily/minute quota ran out.
     if (response.status === 429) {
       throw new Error("Limite gratuito da IA atingido. Tente de novo mais tarde.");
+    }
+    if (response.status === 404) {
+      throw new Error(
+        `Modelo "${GEMINI_MODEL}" indisponível para esta conta. Ajuste o secret GEMINI_MODEL para um modelo atual.`,
+      );
     }
     throw new Error(`Falha na chamada da IA (${response.status}). ${detail.slice(0, 200)}`);
   }
