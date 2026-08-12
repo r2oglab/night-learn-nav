@@ -209,3 +209,46 @@ export const explainCard = createServerFn({ method: "POST" })
     );
     return { explanation };
   });
+
+const IMPROVE_SYSTEM = `Você revisa flashcards de um estudante de medicina, em português do Brasil.
+
+Reescreva o card para ficar melhor de estudar, mantendo o MESMO fato central:
+- A pergunta deve ser específica e respondível sem contexto externo.
+- A resposta deve ser curta, precisa e completa (uma a três frases).
+- Corrija imprecisões, ambiguidade e termos vagos.
+- Se o card já estiver bom, devolva-o praticamente igual — não invente mudanças.
+- NUNCA acrescente informação que não esteja implícita no card original.
+
+Responda APENAS com um objeto JSON, sem texto antes ou depois:
+{"pergunta": "...", "resposta": "...", "mudou": true|false}`;
+
+/** Rewrite a single card, returning a suggestion the user can accept or discard. */
+export const improveCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { pergunta: string; resposta: string }) => {
+    const pergunta = input.pergunta?.trim();
+    if (!pergunta) throw new Error("Card sem pergunta.");
+    return { pergunta, resposta: input.resposta?.trim() ?? "" };
+  })
+  .handler(async ({ data }) => {
+    const raw = await callAi(
+      IMPROVE_SYSTEM,
+      `Pergunta: ${data.pergunta}\nResposta: ${data.resposta}`,
+      2000,
+    );
+
+    const cleaned = raw
+      .replace(/^\s*```(?:json)?/i, "")
+      .replace(/```\s*$/, "")
+      .trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end === -1) throw new Error("A IA não retornou uma sugestão válida.");
+
+    const parsed = JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
+    const pergunta = String(parsed["pergunta"] ?? "").trim();
+    const resposta = String(parsed["resposta"] ?? "").trim();
+    if (!pergunta || !resposta) throw new Error("A IA não retornou uma sugestão válida.");
+
+    return { pergunta, resposta };
+  });

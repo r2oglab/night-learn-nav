@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Sparkles, Eye } from "lucide-react";
+import { Sparkles, Eye, Wand2, Check, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { explainCard } from "@/lib/ai.functions";
+import { explainCard, improveCard } from "@/lib/ai.functions";
+import { Input } from "@/components/ui/input";
 import { isClozeText, maskCloze, revealCloze } from "@/components/cloze-editor";
 
 export type PreviewCard = {
@@ -29,20 +30,35 @@ export function CardPreviewDialog({
   card,
   open,
   onOpenChange,
+  onSave,
 }: {
   card: PreviewCard | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When provided, the preview becomes editable and shows "Melhorar com IA". */
+  onSave?: (updated: { pergunta: string; resposta: string }) => void;
 }) {
   const [revealed, setRevealed] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const explain = useServerFn(explainCard);
+  const improve = useServerFn(improveCard);
+
+  const [editing, setEditing] = useState(false);
+  const [draftFront, setDraftFront] = useState("");
+  const [draftBack, setDraftBack] = useState("");
+  const [improving, setImproving] = useState(false);
+  // Keeps the pre-AI version so a suggestion can be rejected without loss.
+  const [beforeImprove, setBeforeImprove] = useState<{ p: string; r: string } | null>(null);
 
   // A new card means a fresh preview: nothing revealed, no stale explanation.
   useEffect(() => {
     setRevealed(false);
     setExplanation(null);
+    setEditing(false);
+    setBeforeImprove(null);
+    setDraftFront(card?.pergunta ?? "");
+    setDraftBack(card?.resposta ?? "");
   }, [card?.pergunta, card?.resposta, open]);
 
   async function handleExplain() {
@@ -57,6 +73,26 @@ export function CardPreviewDialog({
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setExplaining(false);
+    }
+  }
+
+  async function handleImprove() {
+    if (!card || improving) return;
+    setImproving(true);
+    try {
+      const base = editing
+        ? { pergunta: draftFront, resposta: draftBack }
+        : { pergunta: card.pergunta, resposta: card.resposta };
+      const result = await improve({ data: base });
+      setBeforeImprove({ p: base.pergunta, r: base.resposta });
+      setDraftFront(result.pergunta);
+      setDraftBack(result.resposta);
+      setEditing(true);
+      setRevealed(true);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImproving(false);
     }
   }
 
@@ -102,14 +138,22 @@ export function CardPreviewDialog({
             ) : (
               <>
                 <div className="mb-2 text-xs text-muted-foreground">Frente</div>
-                <div className="whitespace-pre-wrap text-base">{front}</div>
+                {editing ? (
+                  <Input value={draftFront} onChange={(e) => setDraftFront(e.target.value)} />
+                ) : (
+                  <div className="whitespace-pre-wrap text-base">{front}</div>
+                )}
               </>
             )}
 
             {revealed && (
               <div className="mt-4 border-t border-border pt-4">
                 <div className="mb-2 text-xs text-muted-foreground">Verso</div>
-                <div className="whitespace-pre-wrap text-base">{back}</div>
+                {editing ? (
+                  <Input value={draftBack} onChange={(e) => setDraftBack(e.target.value)} />
+                ) : (
+                  <div className="whitespace-pre-wrap text-base">{back}</div>
+                )}
               </div>
             )}
           </div>
@@ -129,7 +173,81 @@ export function CardPreviewDialog({
                 <span className="ml-1.5">{explaining ? "Explicando..." : "Explicar assunto"}</span>
               </Button>
             )}
+
+            {onSave && !editing && !card.image_url && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDraftFront(card.pergunta);
+                  setDraftBack(card.resposta);
+                  setEditing(true);
+                  setRevealed(true);
+                }}
+              >
+                Editar
+              </Button>
+            )}
+
+            {onSave && !card.image_url && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={improving}
+                onClick={() => void handleImprove()}
+              >
+                <Wand2 className="size-3.5" />
+                <span className="ml-1.5">{improving ? "Melhorando..." : "Melhorar com IA"}</span>
+              </Button>
+            )}
           </div>
+
+          {beforeImprove && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+              <span className="text-muted-foreground">Sugestão da IA aplicada ao rascunho.</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setDraftFront(beforeImprove.p);
+                  setDraftBack(beforeImprove.r);
+                  setBeforeImprove(null);
+                }}
+              >
+                <Undo2 className="size-3.5" />
+                <span className="ml-1">Desfazer sugestão</span>
+              </Button>
+            </div>
+          )}
+
+          {editing && onSave && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                disabled={!draftFront.trim() || !draftBack.trim()}
+                onClick={() => {
+                  onSave({ pergunta: draftFront.trim(), resposta: draftBack.trim() });
+                  setEditing(false);
+                  setBeforeImprove(null);
+                }}
+              >
+                <Check className="size-3.5" />
+                <span className="ml-1">Salvar alterações</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false);
+                  setBeforeImprove(null);
+                  setDraftFront(card.pergunta);
+                  setDraftBack(card.resposta);
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          )}
 
           {explanation && (
             <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">

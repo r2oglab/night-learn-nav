@@ -2,7 +2,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import {
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  Search,
+  X,
+  Download,
+  Eye,
+  Pencil,
+  Trash2,
+  CalendarClock,
+  PauseCircle,
+  PlayCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -21,6 +34,7 @@ import {
 } from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
+import { buildCardsCsv, downloadTextFile } from "@/lib/csv-export";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 import {
   ClozeEditor,
@@ -215,6 +229,18 @@ function FlashcardsPage() {
 
   const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
 
+  /** Export a deck (and its subdecks) as CSV our own importer can read back. */
+  function exportDeck(deck: any) {
+    const { csv, count } = buildCardsCsv(cards as any, decks as any, deck.id);
+    if (count === 0) {
+      toast.info("Nenhum card para exportar neste deck.");
+      return;
+    }
+    const safeName = deck.name.replace(/[^\p{L}\p{N}_-]+/gu, "_");
+    downloadTextFile(`${safeName}_${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    toast.success(`${count} card(s) exportado(s)`);
+  }
+
   const [query, setQuery] = useState("");
 
   /**
@@ -336,24 +362,25 @@ function FlashcardsPage() {
               )}
               <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
             </div>
-            <div className="flex items-center gap-3 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setPreviewCard(card)}>
+                <Eye className="size-3.5" />
+                <span className="ml-1">Ver</span>
+              </Button>
               {card.image_url ? (
-                <button
-                  className="text-muted-foreground underline hover:text-foreground"
-                  onClick={() => setOcclusionCard(card)}
-                >
-                  Editar áreas
-                </button>
+                <Button size="sm" variant="outline" onClick={() => setOcclusionCard(card)}>
+                  <Pencil className="size-3.5" />
+                  <span className="ml-1">Áreas</span>
+                </Button>
               ) : (
-                <button
-                  className="text-muted-foreground underline hover:text-foreground"
-                  onClick={() => startEditingCard(card)}
-                >
-                  Editar
-                </button>
+                <Button size="sm" variant="outline" onClick={() => startEditingCard(card)}>
+                  <Pencil className="size-3.5" />
+                  <span className="ml-1">Editar</span>
+                </Button>
               )}
-              <button
-                className="text-muted-foreground underline hover:text-foreground"
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={() => {
                   const input = window.prompt("Adiar por quantos dias?", "1");
                   if (input === null) return;
@@ -365,24 +392,33 @@ function FlashcardsPage() {
                   postponeMutation.mutate({ id: card.id, days: Math.round(days) });
                 }}
               >
-                Adiar
-              </button>
-              <button
-                className="text-muted-foreground underline hover:text-foreground"
+                <CalendarClock className="size-3.5" />
+                <span className="ml-1">Adiar</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={() => suspendMutation.mutate({ id: card.id, suspended: !card.suspended })}
               >
-                {card.suspended ? "Reativar" : "Suspender"}
-              </button>
-              <button
-                className="text-destructive underline hover:text-destructive/80 disabled:opacity-50"
+                {card.suspended ? (
+                  <PlayCircle className="size-3.5" />
+                ) : (
+                  <PauseCircle className="size-3.5" />
+                )}
+                <span className="ml-1">{card.suspended ? "Reativar" : "Suspender"}</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
                 disabled={delMutation.isPending}
                 onClick={() => {
                   const ok = window.confirm(`Excluir o card "${card.pergunta}"?`);
                   if (ok) delMutation.mutate(card.id);
                 }}
               >
-                Excluir
-              </button>
+                <Trash2 className="size-3.5" />
+                <span className="ml-1">Excluir</span>
+              </Button>
             </div>
           </>
         )}
@@ -456,19 +492,26 @@ function FlashcardsPage() {
                   limite {deck.daily_limit}/dia
                 </span>
               )}
-              <div className="ml-auto flex items-center gap-3 text-xs">
-                <button
-                  className="text-muted-foreground underline hover:text-foreground"
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => exportDeck(deck)}>
+                  <Download className="size-3.5" />
+                  <span className="ml-1">Exportar</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => {
                     setEditingDeckId(deck.id);
                     setEditingDeckName(deck.name);
                     setEditingDeckLimit(deck.daily_limit != null ? String(deck.daily_limit) : "");
                   }}
                 >
-                  Editar
-                </button>
-                <button
-                  className="text-destructive underline hover:text-destructive/80"
+                  <Pencil className="size-3.5" />
+                  <span className="ml-1">Editar</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
                   onClick={() => {
                     const deckIds = new Set(collectDeckIds(deck.id));
                     const count = cards.filter((c: any) => deckIds.has(c.deck_id)).length;
@@ -478,8 +521,9 @@ function FlashcardsPage() {
                     if (ok) removeDeck.mutate(deck.id);
                   }}
                 >
-                  Excluir deck
-                </button>
+                  <Trash2 className="size-3.5" />
+                  <span className="ml-1">Excluir</span>
+                </Button>
               </div>
             </>
           )}
@@ -525,6 +569,12 @@ function FlashcardsPage() {
                 open={previewCard !== null}
                 onOpenChange={(o) => {
                   if (!o) setPreviewCard(null);
+                }}
+                onSave={(updated) => {
+                  const id = (previewCard as any)?.id;
+                  if (!id) return;
+                  updateMutation.mutate({ id, ...updated });
+                  setPreviewCard((prev) => (prev ? { ...prev, ...updated } : prev));
                 }}
               />
               {occlusionCard && (

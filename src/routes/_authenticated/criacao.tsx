@@ -417,6 +417,17 @@ function CriacaoPage() {
                 onOpenChange={(o) => {
                   if (!o) setPreviewCard(null);
                 }}
+                onSave={(updated) => {
+                  // Edits land on the proposal list, which is what gets created.
+                  setAiProposals((prev) =>
+                    (prev ?? []).map((c) =>
+                      c.pergunta === previewCard?.pergunta && c.resposta === previewCard?.resposta
+                        ? updated
+                        : c,
+                    ),
+                  );
+                  setPreviewCard((prev) => (prev ? { ...prev, ...updated } : prev));
+                }}
               />
               {editorOpen && occlusionImageUrl && (
                 <ImageOcclusionEditor
