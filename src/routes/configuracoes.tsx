@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Check } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -24,6 +25,7 @@ function Configuracoes() {
   const [displayName, setDisplayName] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [dailyLimitInput, setDailyLimitInput] = useState("");
+  const [dailyGoalInput, setDailyGoalInput] = useState("20");
 
   const qc = useQueryClient();
   const fetchSettings = useServerFn(getUserSettings);
@@ -54,6 +56,10 @@ function Configuracoes() {
   useEffect(() => {
     setDailyLimitInput(settings?.daily_limit != null ? String(settings.daily_limit) : "");
   }, [settings?.daily_limit]);
+
+  useEffect(() => {
+    setDailyGoalInput(String(settings?.daily_goal ?? 20));
+  }, [settings?.daily_goal]);
 
   async function handleAvatarUpload(file: File) {
     setUploadingAvatar(true);
@@ -188,18 +194,26 @@ function Configuracoes() {
 
                   <div className="grid gap-2">
                     <div className="text-sm text-muted-foreground">Meta diária (cards)</div>
-                    <div className="flex gap-2 items-center">
+                    <div className="flex items-center gap-2">
                       <Input
                         type="number"
-                        value={settings?.daily_goal ?? 20}
-                        onChange={(e) =>
-                          upsertMutation.mutate({ daily_goal: Number(e.target.value) })
-                        }
+                        min={1}
+                        value={dailyGoalInput}
+                        onChange={(e) => setDailyGoalInput(e.target.value)}
                         className="w-24"
                       />
-                      <div className="text-sm text-muted-foreground">
-                        (Atual: {settings?.daily_goal ?? 20})
-                      </div>
+                      <Button
+                        size="icon"
+                        className="size-9"
+                        title="Salvar meta diária"
+                        disabled={upsertMutation.isPending || dailyGoalInput.trim() === ""}
+                        onClick={() =>
+                          upsertMutation.mutate({ daily_goal: Number(dailyGoalInput) })
+                        }
+                      >
+                        <Check className="size-4" />
+                        <span className="sr-only">Salvar meta diária</span>
+                      </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Alvo usado para colorir o mapa de calor. Não impede revisões.

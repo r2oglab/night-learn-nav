@@ -50,6 +50,7 @@ export function CardPreviewDialog({
   const [improving, setImproving] = useState(false);
   // Keeps the pre-AI version so a suggestion can be rejected without loss.
   const [beforeImprove, setBeforeImprove] = useState<{ p: string; r: string } | null>(null);
+  const [noChangeNotice, setNoChangeNotice] = useState(false);
 
   // A new card means a fresh preview: nothing revealed, no stale explanation.
   useEffect(() => {
@@ -57,6 +58,7 @@ export function CardPreviewDialog({
     setExplanation(null);
     setEditing(false);
     setBeforeImprove(null);
+    setNoChangeNotice(false);
     setDraftFront(card?.pergunta ?? "");
     setDraftBack(card?.resposta ?? "");
   }, [card?.pergunta, card?.resposta, open]);
@@ -84,11 +86,20 @@ export function CardPreviewDialog({
         ? { pergunta: draftFront, resposta: draftBack }
         : { pergunta: card.pergunta, resposta: card.resposta };
       const result = await improve({ data: base });
-      setBeforeImprove({ p: base.pergunta, r: base.resposta });
-      setDraftFront(result.pergunta);
-      setDraftBack(result.resposta);
-      setEditing(true);
-      setRevealed(true);
+
+      const unchanged = result.pergunta === base.pergunta && result.resposta === base.resposta;
+      setNoChangeNotice(unchanged);
+      if (unchanged) {
+        // Nothing to undo, and forcing edit mode over an identical draft
+        // would look exactly like the "did nothing" symptom we're avoiding.
+        setBeforeImprove(null);
+      } else {
+        setBeforeImprove({ p: base.pergunta, r: base.resposta });
+        setDraftFront(result.pergunta);
+        setDraftBack(result.resposta);
+        setEditing(true);
+        setRevealed(true);
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -201,6 +212,12 @@ export function CardPreviewDialog({
               </Button>
             )}
           </div>
+
+          {noChangeNotice && (
+            <p className="text-xs text-muted-foreground">
+              A IA avaliou o card e considerou que ele já está bom — nada foi alterado.
+            </p>
+          )}
 
           {beforeImprove && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
