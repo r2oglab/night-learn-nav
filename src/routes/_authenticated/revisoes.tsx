@@ -203,7 +203,7 @@ function RevisoesPage() {
     return (
       <section key={deck.id} className="rounded-xl border border-border bg-card p-3">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Button size="sm" variant="ghost" onClick={() => toggle(deck.id)}>
+          <Button size="icon" variant="ghost" className="size-7" onClick={() => toggle(deck.id)}>
             {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
           <h3 className="text-sm font-medium">{deck.name}</h3>
@@ -220,6 +220,7 @@ function RevisoesPage() {
               size="sm"
               variant={subtreeDue.length > 0 ? "default" : "ghost"}
               disabled={subtreeDue.length === 0}
+              className="h-7 px-2.5 text-xs"
               onClick={() => startSession(subtreeDue)}
             >
               <Play className="size-3.5" />
@@ -231,7 +232,11 @@ function RevisoesPage() {
         {isOpen && (
           <div className="mt-3 space-y-3">
             {ownDue.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum card deste deck para hoje.</p>
+              // Only worth saying when there's nothing nested below either —
+              // otherwise it contradicts the subdeck rows right underneath.
+              children.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum card deste deck para hoje.</p>
+              ) : null
             ) : (
               <ul className="space-y-3">
                 {ownDue.map((card) => {

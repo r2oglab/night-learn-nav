@@ -362,25 +362,45 @@ function FlashcardsPage() {
               )}
               <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => setPreviewCard(card)}>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-7"
+                title="Ver prévia"
+                onClick={() => setPreviewCard(card)}
+              >
                 <Eye className="size-3.5" />
-                <span className="ml-1">Ver</span>
+                <span className="sr-only">Ver prévia</span>
               </Button>
               {card.image_url ? (
-                <Button size="sm" variant="outline" onClick={() => setOcclusionCard(card)}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Editar áreas"
+                  onClick={() => setOcclusionCard(card)}
+                >
                   <Pencil className="size-3.5" />
-                  <span className="ml-1">Áreas</span>
+                  <span className="sr-only">Editar áreas</span>
                 </Button>
               ) : (
-                <Button size="sm" variant="outline" onClick={() => startEditingCard(card)}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Editar"
+                  onClick={() => startEditingCard(card)}
+                >
                   <Pencil className="size-3.5" />
-                  <span className="ml-1">Editar</span>
+                  <span className="sr-only">Editar</span>
                 </Button>
               )}
               <Button
-                size="sm"
-                variant="outline"
+                size="icon"
+                variant="ghost"
+                className="size-7"
+                title="Adiar"
                 onClick={() => {
                   const input = window.prompt("Adiar por quantos dias?", "1");
                   if (input === null) return;
@@ -393,11 +413,13 @@ function FlashcardsPage() {
                 }}
               >
                 <CalendarClock className="size-3.5" />
-                <span className="ml-1">Adiar</span>
+                <span className="sr-only">Adiar</span>
               </Button>
               <Button
-                size="sm"
-                variant="outline"
+                size="icon"
+                variant="ghost"
+                className="size-7"
+                title={card.suspended ? "Reativar" : "Suspender"}
                 onClick={() => suspendMutation.mutate({ id: card.id, suspended: !card.suspended })}
               >
                 {card.suspended ? (
@@ -405,11 +427,13 @@ function FlashcardsPage() {
                 ) : (
                   <PauseCircle className="size-3.5" />
                 )}
-                <span className="ml-1">{card.suspended ? "Reativar" : "Suspender"}</span>
+                <span className="sr-only">{card.suspended ? "Reativar" : "Suspender"}</span>
               </Button>
               <Button
-                size="sm"
-                variant="destructive"
+                size="icon"
+                variant="ghost"
+                className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                title="Excluir card"
                 disabled={delMutation.isPending}
                 onClick={() => {
                   const ok = window.confirm(`Excluir o card "${card.pergunta}"?`);
@@ -417,7 +441,7 @@ function FlashcardsPage() {
                 }}
               >
                 <Trash2 className="size-3.5" />
-                <span className="ml-1">Excluir</span>
+                <span className="sr-only">Excluir card</span>
               </Button>
             </div>
           </>
@@ -492,14 +516,22 @@ function FlashcardsPage() {
                   limite {deck.daily_limit}/dia
                 </span>
               )}
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => exportDeck(deck)}>
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Exportar deck (CSV)"
+                  onClick={() => exportDeck(deck)}
+                >
                   <Download className="size-3.5" />
-                  <span className="ml-1">Exportar</span>
+                  <span className="sr-only">Exportar deck</span>
                 </Button>
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Editar deck"
                   onClick={() => {
                     setEditingDeckId(deck.id);
                     setEditingDeckName(deck.name);
@@ -507,11 +539,13 @@ function FlashcardsPage() {
                   }}
                 >
                   <Pencil className="size-3.5" />
-                  <span className="ml-1">Editar</span>
+                  <span className="sr-only">Editar deck</span>
                 </Button>
                 <Button
-                  size="sm"
-                  variant="destructive"
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  title="Excluir deck"
                   onClick={() => {
                     const deckIds = new Set(collectDeckIds(deck.id));
                     const count = cards.filter((c: any) => deckIds.has(c.deck_id)).length;
@@ -522,7 +556,7 @@ function FlashcardsPage() {
                   }}
                 >
                   <Trash2 className="size-3.5" />
-                  <span className="ml-1">Excluir</span>
+                  <span className="sr-only">Excluir deck</span>
                 </Button>
               </div>
             </>
