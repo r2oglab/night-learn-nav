@@ -124,7 +124,7 @@ export function CardPreviewDialog({
 
         <div className="grid gap-4">
           <div className="rounded-lg border border-border p-4">
-            {card.image_url ? (
+            {card.image_url && card.occlusion_target_id ? (
               <div className="relative w-full overflow-hidden rounded-lg">
                 <img src={card.image_url} alt="" className="block w-full" />
                 {(card.occlusion_regions ?? []).map((region) => {
@@ -153,6 +153,13 @@ export function CardPreviewDialog({
                   <Input value={draftFront} onChange={(e) => setDraftFront(e.target.value)} />
                 ) : (
                   <div className="whitespace-pre-wrap text-base">{front}</div>
+                )}
+                {card.image_url && (
+                  <img
+                    src={card.image_url}
+                    alt=""
+                    className="mx-auto mt-3 block max-h-64 w-auto rounded-lg"
+                  />
                 )}
               </>
             )}
@@ -185,7 +192,7 @@ export function CardPreviewDialog({
               </Button>
             )}
 
-            {onSave && !editing && !card.image_url && (
+            {onSave && !editing && !card.occlusion_target_id && (
               <Button
                 variant="outline"
                 size="sm"
@@ -200,7 +207,7 @@ export function CardPreviewDialog({
               </Button>
             )}
 
-            {onSave && !card.image_url && (
+            {onSave && !card.occlusion_target_id && (
               <Button
                 variant="outline"
                 size="sm"
