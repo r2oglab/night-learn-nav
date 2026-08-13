@@ -33,6 +33,7 @@ import {
   setCardSuspended,
 } from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
 import { buildCardsCsv, downloadTextFile } from "@/lib/csv-export";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
@@ -343,24 +344,33 @@ function FlashcardsPage() {
           </div>
         ) : (
           <>
-            <div className={card.suspended ? "opacity-50" : undefined}>
-              {card.suspended && (
-                <span className="mb-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                  Suspenso
-                </span>
+            <div className={cn("flex gap-3", card.suspended && "opacity-50")}>
+              {card.image_url && !card.occlusion_target_id && (
+                <img
+                  src={card.image_url}
+                  alt=""
+                  className="size-14 shrink-0 rounded-md border border-border object-cover"
+                />
               )}
-              {isClozeText(card.pergunta) ? (
-                <>
-                  <p className="font-medium">{maskCloze(card.pergunta)}</p>
-                  <p className="text-sm text-muted-foreground">{revealCloze(card.pergunta)}</p>
-                </>
-              ) : (
-                <>
-                  <p className="font-medium">{card.pergunta}</p>
-                  <p className="text-sm text-muted-foreground">{card.resposta}</p>
-                </>
-              )}
-              <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
+              <div className="min-w-0 flex-1">
+                {card.suspended && (
+                  <span className="mb-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                    Suspenso
+                  </span>
+                )}
+                {isClozeText(card.pergunta) ? (
+                  <>
+                    <p className="font-medium">{maskCloze(card.pergunta)}</p>
+                    <p className="text-sm text-muted-foreground">{revealCloze(card.pergunta)}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium">{card.pergunta}</p>
+                    <p className="text-sm text-muted-foreground">{card.resposta}</p>
+                  </>
+                )}
+                <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
               <Button

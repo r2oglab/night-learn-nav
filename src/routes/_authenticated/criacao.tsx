@@ -55,6 +55,15 @@ function CriacaoPage() {
   const [cardType, setCardType] = useState<CardType>("simples");
   const invert = cardType === "invertido";
   const cloze = cardType === "cloze";
+  const [attachedImageFile, setAttachedImageFile] = useState<File | null>(null);
+  const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
+
+  function handleAttachedImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAttachedImageFile(file);
+    setAttachedImageUrl(URL.createObjectURL(file));
+  }
   const typeIn = cardType === "digitar";
   const [clozeText, setClozeText] = useState("");
   const [hiddenTokens, setHiddenTokens] = useState<Set<number>>(new Set());
@@ -154,6 +163,7 @@ function CriacaoPage() {
       invert?: boolean;
       cloze?: boolean;
       typeIn?: boolean;
+      image_url?: string | undefined;
     }) => addCard({ data: vars }),
     onSuccess: () => {
       setDeckPath("");
@@ -161,6 +171,8 @@ function CriacaoPage() {
       setAnswer("");
       setClozeText("");
       setHiddenTokens(new Set());
+      setAttachedImageFile(null);
+      setAttachedImageUrl(null);
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       toast.success("Card adicionado");
@@ -496,6 +508,19 @@ function CriacaoPage() {
                     const deckRow = await createNewDeck({ data: { path: deck } });
                     if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
                     const pergunta = cloze ? buildClozeQuestion() : question.trim();
+
+                    let imageUrl: string | undefined;
+                    if (attachedImageFile && !cloze) {
+                      const ext = attachedImageFile.name.split(".").pop() || "png";
+                      const path = `${crypto.randomUUID()}.${ext}`;
+                      const { error: uploadError } = await supabase.storage
+                        .from("card-images")
+                        .upload(path, attachedImageFile);
+                      if (uploadError) throw uploadError;
+                      imageUrl = supabase.storage.from("card-images").getPublicUrl(path)
+                        .data.publicUrl;
+                    }
+
                     create.mutate({
                       deck_id: deckRow.id,
                       pergunta,
@@ -503,6 +528,7 @@ function CriacaoPage() {
                       invert,
                       cloze,
                       typeIn,
+                      image_url: imageUrl,
                     });
                   } catch (err: unknown) {
                     toast.error(err instanceof Error ? err.message : String(err));
@@ -987,6 +1013,40 @@ function CriacaoPage() {
                         placeholder="Escreva a resposta do card"
                       />
                     </label>
+
+                    <div className="grid gap-2">
+                      <span className="text-sm text-muted-foreground">Imagem (opcional)</span>
+                      {attachedImageUrl ? (
+                        <div className="flex items-start gap-3">
+                          <img
+                            src={attachedImageUrl}
+                            alt=""
+                            className="max-h-32 w-auto rounded-lg border border-border"
+                          />
+                          <button
+                            type="button"
+                            className="text-xs text-destructive underline hover:text-destructive/80"
+                            onClick={() => {
+                              setAttachedImageFile(null);
+                              setAttachedImageUrl(null);
+                            }}
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="text-xs text-muted-foreground"
+                          onChange={handleAttachedImageChange}
+                        />
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Aparece junto da pergunta na revisão. Diferente de "Oclusão de imagem" —
+                        aqui nada fica escondido na figura.
+                      </p>
+                    </div>
                   </div>
                 )}
 

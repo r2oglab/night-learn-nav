@@ -485,6 +485,13 @@ export function ReviewSession({
               <>
                 <div className="mb-4 text-sm text-muted-foreground">Pergunta</div>
                 <div className="text-base">{maskedQuestion}</div>
+                {current?.image_url && (
+                  <img
+                    src={current.image_url}
+                    alt=""
+                    className="mx-auto mt-4 block max-h-80 w-auto rounded-lg"
+                  />
+                )}
 
                 {isTypeIn && (
                   <div className="mt-4">

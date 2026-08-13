@@ -62,6 +62,7 @@ export const createCard = createServerFn({ method: "POST" })
       invert?: boolean;
       cloze?: boolean;
       typeIn?: boolean;
+      image_url?: string | undefined;
     }) => {
       const deckId = input.deck_id?.trim();
       const pergunta = input.pergunta?.trim();
@@ -71,7 +72,15 @@ export const createCard = createServerFn({ method: "POST" })
       if (!deckId) throw new Error("Informe o deck do card.");
       if (!pergunta) throw new Error("Informe a pergunta do card.");
       if (!cloze && !resposta) throw new Error("Informe a resposta do card.");
-      return { deck_id: deckId, pergunta, resposta, invert, cloze, typeIn: !!input.typeIn };
+      return {
+        deck_id: deckId,
+        pergunta,
+        resposta,
+        invert,
+        cloze,
+        typeIn: !!input.typeIn,
+        image_url: input.image_url?.trim() || undefined,
+      };
     },
   )
   .handler(async ({ data, context }) => {
@@ -83,16 +92,19 @@ export const createCard = createServerFn({ method: "POST" })
       pergunta: data.pergunta,
       resposta: data.cloze ? data.pergunta : data.resposta,
       card_type: data.typeIn ? "digitar" : null,
+      image_url: data.image_url ?? null,
       ...newCardFields(),
     });
 
-    // if inverted and not cloze, create a swapped card
+    // if inverted and not cloze, create a swapped card — the same picture
+    // is relevant either way round, so it rides along on both cards.
     if (data.invert && !data.cloze) {
       inserts.push({
         user_id: context.userId,
         deck_id: data.deck_id,
         pergunta: data.resposta,
         resposta: data.pergunta,
+        image_url: data.image_url ?? null,
         ...newCardFields(),
       });
     }
