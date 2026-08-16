@@ -434,7 +434,7 @@ function FlashcardsPage() {
                 <Eye className="size-3.5" />
                 <span className="sr-only">Ver prévia</span>
               </Button>
-              {card.image_url ? (
+              {card.image_url && card.occlusion_target_id ? (
                 <Button
                   size="icon"
                   variant="ghost"
@@ -570,10 +570,14 @@ function FlashcardsPage() {
             </div>
           ) : (
             <>
-              <h3 className="text-sm font-medium">{deck.name}</h3>
-              <span className="text-xs text-muted-foreground">{totalCardCount} card(s)</span>
+              <h3 className="min-w-0 flex-1 truncate text-sm font-medium" title={deck.name}>
+                {deck.name}
+              </h3>
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {totalCardCount} card(s)
+              </span>
               {deck.daily_limit != null && (
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
                   limite {deck.daily_limit}/dia
                 </span>
               )}

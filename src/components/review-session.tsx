@@ -385,9 +385,11 @@ export function ReviewSession({
                     )}
                   </svg>
 
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="text-sm font-medium">{name}</p>
+                      <p className="min-w-0 truncate text-sm font-medium" title={name}>
+                        {name}
+                      </p>
                       <p className="shrink-0 text-xs text-muted-foreground">
                         {correct}/{total} acertos
                       </p>

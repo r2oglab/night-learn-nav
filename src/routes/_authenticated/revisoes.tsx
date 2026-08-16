@@ -206,16 +206,18 @@ function RevisoesPage() {
           <Button size="icon" variant="ghost" className="size-7" onClick={() => toggle(deck.id)}>
             {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
-          <h3 className="text-sm font-medium">{deck.name}</h3>
+          <h3 className="min-w-0 flex-1 truncate text-sm font-medium" title={deck.name}>
+            {deck.name}
+          </h3>
           <span
             className={cn(
-              "rounded-full px-2 py-0.5 text-xs",
+              "shrink-0 rounded-full px-2 py-0.5 text-xs",
               subtreeDue.length > 0 ? "bg-primary/15 text-primary" : "text-muted-foreground",
             )}
           >
             {subtreeDue.length} para hoje
           </span>
-          <div className="ml-auto">
+          <div className="ml-auto shrink-0">
             <Button
               size="sm"
               variant={subtreeDue.length > 0 ? "default" : "ghost"}
