@@ -1102,31 +1102,31 @@ function CriacaoPage() {
                           </div>
                         </div>
                       ) : (
-                        <>
-                          <div
-                            className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground outline-none"
-                            onPaste={handleAttachedImagePaste}
-                            tabIndex={0}
-                          >
-                            <p>Cole uma imagem (Ctrl+V) ou escolha um arquivo</p>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="text-xs"
-                              onChange={handleAttachedImageChange}
-                            />
-                          </div>
-                          <Button
+                        <div
+                          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground outline-none"
+                          onPaste={handleAttachedImagePaste}
+                          tabIndex={0}
+                        >
+                          <p>
+                            Cole uma imagem (Ctrl+V) ou{" "}
+                            <label className="cursor-pointer text-sky-400 underline underline-offset-2 hover:text-sky-300">
+                              escolha um arquivo
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleAttachedImageChange}
+                              />
+                            </label>
+                          </p>
+                          <button
                             type="button"
-                            variant="outline"
-                            size="sm"
-                            className="self-start"
+                            className="text-xs text-sky-400 underline underline-offset-2 hover:text-sky-300"
                             onClick={() => void handleAttachedImagePasteButton()}
                           >
-                            <ClipboardPaste className="size-3.5" />
-                            <span className="ml-1.5">Colar Imagem da Área de Transferência</span>
-                          </Button>
-                        </>
+                            colar da área de transferência
+                          </button>
+                        </div>
                       )}
                       <p className="text-xs text-muted-foreground">
                         Aparece junto da pergunta e/ou da resposta na revisão. Diferente de "Oclusão
