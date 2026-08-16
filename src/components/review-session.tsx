@@ -462,7 +462,7 @@ export function ReviewSession({
           </div>
 
           <div className="rounded-lg border border-border p-4 sm:p-6">
-            {current?.image_url ? (
+            {current?.image_url && current?.occlusion_target_id ? (
               <div className="mx-auto max-w-xl">
                 <div className="relative w-full overflow-hidden rounded-lg">
                   <img src={current.image_url} alt="" className="block w-full" />
