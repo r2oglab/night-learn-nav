@@ -1,7 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { newCardFields, reviewCard as reviewCardFsrs, type CardRow } from "@/lib/fsrs";
+import {
+  newCardFields,
+  reviewCard as reviewCardFsrs,
+  toLocalDateString,
+  type CardRow,
+} from "@/lib/fsrs";
 import { cleanupOrphanedCardImages } from "@/lib/card-images";
 
 export const listCards = createServerFn({ method: "GET" })
@@ -63,6 +68,8 @@ export const createCard = createServerFn({ method: "POST" })
       cloze?: boolean;
       typeIn?: boolean;
       image_url?: string | undefined;
+      image_placement?: "frente" | "verso" | "ambos" | undefined;
+      tz_offset_minutes: number;
     }) => {
       const deckId = input.deck_id?.trim();
       const pergunta = input.pergunta?.trim();
@@ -72,6 +79,10 @@ export const createCard = createServerFn({ method: "POST" })
       if (!deckId) throw new Error("Informe o deck do card.");
       if (!pergunta) throw new Error("Informe a pergunta do card.");
       if (!cloze && !resposta) throw new Error("Informe a resposta do card.");
+      const placement =
+        input.image_placement === "verso" || input.image_placement === "ambos"
+          ? input.image_placement
+          : "frente";
       return {
         deck_id: deckId,
         pergunta,
@@ -80,6 +91,8 @@ export const createCard = createServerFn({ method: "POST" })
         cloze,
         typeIn: !!input.typeIn,
         image_url: input.image_url?.trim() || undefined,
+        image_placement: placement,
+        tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
       };
     },
   )
@@ -93,19 +106,29 @@ export const createCard = createServerFn({ method: "POST" })
       resposta: data.cloze ? data.pergunta : data.resposta,
       card_type: data.typeIn ? "digitar" : null,
       image_url: data.image_url ?? null,
-      ...newCardFields(),
+      image_placement: data.image_url ? data.image_placement : null,
+      ...newCardFields(data.tz_offset_minutes),
     });
 
-    // if inverted and not cloze, create a swapped card — the same picture
-    // is relevant either way round, so it rides along on both cards.
+    // If inverted and not cloze, create a swapped card. The picture was
+    // placed relative to the ORIGINAL pergunta/resposta text, and that text
+    // swaps sides on card 2 (its front is card 1's back, and vice versa) —
+    // so "frente" flips to "verso" and back, while "ambos" needs no change.
     if (data.invert && !data.cloze) {
+      const swappedPlacement =
+        data.image_placement === "frente"
+          ? "verso"
+          : data.image_placement === "verso"
+            ? "frente"
+            : data.image_placement;
       inserts.push({
         user_id: context.userId,
         deck_id: data.deck_id,
         pergunta: data.resposta,
         resposta: data.pergunta,
         image_url: data.image_url ?? null,
-        ...newCardFields(),
+        image_placement: data.image_url ? swappedPlacement : null,
+        ...newCardFields(data.tz_offset_minutes),
       });
     }
 
@@ -118,10 +141,13 @@ export const createCard = createServerFn({ method: "POST" })
 
 export const reviewCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { id: string; rating: number }) => {
+  .inputValidator((input: { id: string; rating: number; tz_offset_minutes: number }) => {
     if (!input.id?.trim()) throw new Error("ID do card inválido.");
     if (![1, 2, 3, 4].includes(input.rating)) throw new Error("Nota inválida.");
-    return input;
+    return {
+      ...input,
+      tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
+    };
   })
   .handler(async ({ data, context }) => {
     const { data: card, error } = await context.supabase
@@ -140,7 +166,13 @@ export const reviewCard = createServerFn({ method: "POST" })
       .maybeSingle();
 
     const desiredRetention = settings?.desired_retention ?? 0.9;
-    const fields = reviewCardFsrs(card as CardRow, data.rating, now, desiredRetention);
+    const fields = reviewCardFsrs(
+      card as CardRow,
+      data.rating,
+      now,
+      data.tz_offset_minutes,
+      desiredRetention,
+    );
 
     // Snapshot the pre-grading FSRS fields so a mis-tap can be undone.
     const prevState = {
@@ -163,12 +195,14 @@ export const reviewCard = createServerFn({ method: "POST" })
       .single();
     if (updateError) throw new Error(updateError.message);
 
-    // update user_settings streak / last_review_date
+    // update user_settings streak / last_review_date — same local-calendar
+    // fix as the due date: "today" has to mean the user's today, not the
+    // server's UTC today, or a late-night review could snap the streak.
     try {
       const today = new Date();
-      const todayStr = today.toISOString().slice(0, 10);
+      const todayStr = toLocalDateString(today, data.tz_offset_minutes);
       const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+      const yesterdayStr = toLocalDateString(yesterday, data.tz_offset_minutes);
 
       const prevDate = settings?.last_review_date ? settings.last_review_date : null;
       const prevStreak = typeof settings?.streak === "number" ? settings.streak : 0;
@@ -251,15 +285,27 @@ type OcclusionRegion = {
 
 export const createImageOcclusionCards = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { deck_id: string; image_url: string; regions: OcclusionRegion[] }) => {
-    const deckId = input.deck_id?.trim();
-    const imageUrl = input.image_url?.trim();
-    if (!deckId) throw new Error("Informe o deck.");
-    if (!imageUrl) throw new Error("Envie uma imagem.");
-    if (!input.regions || input.regions.length === 0)
-      throw new Error("Desenhe pelo menos uma área de oclusão.");
-    return { deck_id: deckId, image_url: imageUrl, regions: input.regions };
-  })
+  .inputValidator(
+    (input: {
+      deck_id: string;
+      image_url: string;
+      regions: OcclusionRegion[];
+      tz_offset_minutes: number;
+    }) => {
+      const deckId = input.deck_id?.trim();
+      const imageUrl = input.image_url?.trim();
+      if (!deckId) throw new Error("Informe o deck.");
+      if (!imageUrl) throw new Error("Envie uma imagem.");
+      if (!input.regions || input.regions.length === 0)
+        throw new Error("Desenhe pelo menos uma área de oclusão.");
+      return {
+        deck_id: deckId,
+        image_url: imageUrl,
+        regions: input.regions,
+        tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
+      };
+    },
+  )
   .handler(async ({ data, context }) => {
     // "Hide all, guess one": every card generated from this image carries
     // the full regions array (so all masks render on the front), but each
@@ -273,7 +319,7 @@ export const createImageOcclusionCards = createServerFn({ method: "POST" })
       image_url: data.image_url,
       occlusion_regions: data.regions,
       occlusion_target_id: region.id,
-      ...newCardFields(),
+      ...newCardFields(data.tz_offset_minutes),
     }));
 
     const { data: rows, error } = await context.supabase.from("cards").insert(inserts).select("*");
@@ -291,11 +337,17 @@ export const createImageOcclusionCards = createServerFn({ method: "POST" })
 export const importCards = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
-    (input: { cards: { deckPath: string; pergunta: string; resposta: string }[] }) => {
+    (input: {
+      cards: { deckPath: string; pergunta: string; resposta: string }[];
+      tz_offset_minutes: number;
+    }) => {
       if (!input.cards || input.cards.length === 0) throw new Error("Nenhum card para importar.");
       if (input.cards.length > 5000)
         throw new Error("Importação limitada a 5000 cards por vez. Divida o arquivo.");
-      return { cards: input.cards };
+      return {
+        cards: input.cards,
+        tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
+      };
     },
   )
   .handler(async ({ data, context }) => {
@@ -359,7 +411,7 @@ export const importCards = createServerFn({ method: "POST" })
         deck_id: deckId,
         pergunta: card.pergunta,
         resposta: card.resposta,
-        ...newCardFields(),
+        ...newCardFields(data.tz_offset_minutes),
       });
     }
 
@@ -390,12 +442,22 @@ export const importCards = createServerFn({ method: "POST" })
 export const updateImageOcclusion = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
-    (input: { card_id: string; image_url?: string | undefined; regions: OcclusionRegion[] }) => {
+    (input: {
+      card_id: string;
+      image_url?: string | undefined;
+      regions: OcclusionRegion[];
+      tz_offset_minutes: number;
+    }) => {
       const cardId = input.card_id?.trim();
       if (!cardId) throw new Error("Card inválido.");
       if (!input.regions || input.regions.length === 0)
         throw new Error("Mantenha pelo menos uma área de oclusão.");
-      return { card_id: cardId, image_url: input.image_url, regions: input.regions };
+      return {
+        card_id: cardId,
+        image_url: input.image_url,
+        regions: input.regions,
+        tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
+      };
     },
   )
   .handler(async ({ data, context }) => {
@@ -458,7 +520,7 @@ export const updateImageOcclusion = createServerFn({ method: "POST" })
         image_url: imageUrl,
         occlusion_regions: data.regions,
         occlusion_target_id: region.id,
-        ...newCardFields(),
+        ...newCardFields(data.tz_offset_minutes),
       }));
       const { error } = await context.supabase.from("cards").insert(inserts);
       if (error) throw new Error(error.message);
@@ -513,17 +575,25 @@ export const undoReview = createServerFn({ method: "POST" })
  */
 export const postponeCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { id: string; days: number }) => {
+  .inputValidator((input: { id: string; days: number; tz_offset_minutes: number }) => {
     if (!input.id?.trim()) throw new Error("Card inválido.");
     const days = Math.round(input.days);
     if (!Number.isFinite(days) || days < 1 || days > 3650)
       throw new Error("Informe de 1 a 3650 dias.");
-    return { id: input.id, days };
+    return {
+      id: input.id,
+      days,
+      tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
+    };
   })
   .handler(async ({ data, context }) => {
-    const target = new Date();
-    target.setDate(target.getDate() + data.days);
-    const due = target.toISOString().slice(0, 10);
+    // Establish "today" in the user's own calendar first (same fix as card
+    // scheduling), THEN add whole days on a noon-UTC anchor so the addition
+    // itself can't drift onto the wrong date.
+    const todayStr = toLocalDateString(new Date(), data.tz_offset_minutes);
+    const anchor = new Date(`${todayStr}T12:00:00Z`);
+    anchor.setUTCDate(anchor.getUTCDate() + data.days);
+    const due = anchor.toISOString().slice(0, 10);
 
     const { data: updated, error } = await context.supabase
       .from("cards")

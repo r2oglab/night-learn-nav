@@ -16,6 +16,7 @@ export type PreviewCard = {
   occlusion_regions?: { id: string; x: number; y: number; width: number; height: number }[] | null;
   occlusion_target_id?: string | null;
   card_type?: string | null;
+  image_placement?: string | null;
 };
 
 /**
@@ -112,6 +113,9 @@ export function CardPreviewDialog({
   const cloze = isClozeText(card.pergunta);
   const front = cloze ? maskCloze(card.pergunta) : card.pergunta;
   const back = cloze ? revealCloze(card.pergunta) : card.resposta;
+  const imagePlacement = card.image_placement ?? "frente";
+  const showImageOnFront = imagePlacement === "frente" || imagePlacement === "ambos";
+  const showImageOnBack = imagePlacement === "verso" || imagePlacement === "ambos";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -154,7 +158,7 @@ export function CardPreviewDialog({
                 ) : (
                   <div className="whitespace-pre-wrap text-base">{front}</div>
                 )}
-                {card.image_url && (
+                {card.image_url && showImageOnFront && (
                   <img
                     src={card.image_url}
                     alt=""
@@ -171,6 +175,13 @@ export function CardPreviewDialog({
                   <Input value={draftBack} onChange={(e) => setDraftBack(e.target.value)} />
                 ) : (
                   <div className="whitespace-pre-wrap text-base">{back}</div>
+                )}
+                {card.image_url && showImageOnBack && (
+                  <img
+                    src={card.image_url}
+                    alt=""
+                    className="mx-auto mt-3 block max-h-64 w-auto rounded-lg"
+                  />
                 )}
               </div>
             )}

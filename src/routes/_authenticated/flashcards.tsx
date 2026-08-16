@@ -59,7 +59,8 @@ function FlashcardsPage() {
   const suspendServer = useServerFn(setCardSuspended);
 
   const postponeMutation = useMutation({
-    mutationFn: (vars: { id: string; days: number }) => postponeServer({ data: vars }),
+    mutationFn: (vars: { id: string; days: number }) =>
+      postponeServer({ data: { ...vars, tz_offset_minutes: new Date().getTimezoneOffset() } }),
     onSuccess: (_d, vars) => {
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       toast.success(`Card adiado por ${vars.days} dia(s)`);
@@ -156,6 +157,7 @@ function FlashcardsPage() {
         data: {
           card_id: occlusionCard.id,
           image_url: imageUrl,
+          tz_offset_minutes: new Date().getTimezoneOffset(),
           regions: newRegions.map((r) => ({
             id: r.id,
             x: r.x,

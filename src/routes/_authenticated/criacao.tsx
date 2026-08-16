@@ -57,12 +57,47 @@ function CriacaoPage() {
   const cloze = cardType === "cloze";
   const [attachedImageFile, setAttachedImageFile] = useState<File | null>(null);
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
+  const [attachedImagePlacement, setAttachedImagePlacement] = useState<
+    "frente" | "verso" | "ambos"
+  >("frente");
+
+  function loadAttachedImage(file: File) {
+    setAttachedImageFile(file);
+    setAttachedImageUrl(URL.createObjectURL(file));
+  }
 
   function handleAttachedImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    setAttachedImageFile(file);
-    setAttachedImageUrl(URL.createObjectURL(file));
+    if (file) loadAttachedImage(file);
+  }
+
+  function handleAttachedImagePaste(e: React.ClipboardEvent) {
+    const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith("image/"));
+    const file = item?.getAsFile();
+    if (file) {
+      e.preventDefault();
+      loadAttachedImage(file);
+    }
+  }
+
+  async function handleAttachedImagePasteButton() {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith("image/"));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], `colado.${imageType.split("/")[1] || "png"}`, {
+            type: imageType,
+          });
+          loadAttachedImage(file);
+          return;
+        }
+      }
+      toast.error("Nenhuma imagem encontrada na área de transferência.");
+    } catch {
+      toast.error("Não foi possível acessar a área de transferência. Tente Ctrl+V na área acima.");
+    }
   }
   const typeIn = cardType === "digitar";
   const [clozeText, setClozeText] = useState("");
@@ -139,7 +174,10 @@ function CriacaoPage() {
     setGenerating(true);
     try {
       const result = await runImport({
-        data: { cards: chosen.map((c) => ({ ...c, deckPath: deck })) },
+        data: {
+          cards: chosen.map((c) => ({ ...c, deckPath: deck })),
+          tz_offset_minutes: new Date().getTimezoneOffset(),
+        },
       });
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
@@ -164,6 +202,8 @@ function CriacaoPage() {
       cloze?: boolean;
       typeIn?: boolean;
       image_url?: string | undefined;
+      image_placement?: "frente" | "verso" | "ambos";
+      tz_offset_minutes: number;
     }) => addCard({ data: vars }),
     onSuccess: () => {
       setDeckPath("");
@@ -173,6 +213,7 @@ function CriacaoPage() {
       setHiddenTokens(new Set());
       setAttachedImageFile(null);
       setAttachedImageUrl(null);
+      setAttachedImagePlacement("frente");
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       toast.success("Card adicionado");
@@ -321,7 +362,9 @@ function CriacaoPage() {
     }
     setImporting(true);
     try {
-      const result = await runImport({ data: { cards: csvPreview } });
+      const result = await runImport({
+        data: { cards: csvPreview, tz_offset_minutes: new Date().getTimezoneOffset() },
+      });
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       toast.success(`${result.imported} card(s) importado(s) em ${result.decks} deck(s)`);
@@ -384,6 +427,7 @@ function CriacaoPage() {
         data: {
           deck_id: deckRow.id,
           image_url: urlData.publicUrl,
+          tz_offset_minutes: new Date().getTimezoneOffset(),
           regions: regions.map((r) => ({
             id: r.id,
             x: r.x,
@@ -529,6 +573,8 @@ function CriacaoPage() {
                       cloze,
                       typeIn,
                       image_url: imageUrl,
+                      image_placement: attachedImagePlacement,
+                      tz_offset_minutes: new Date().getTimezoneOffset(),
                     });
                   } catch (err: unknown) {
                     toast.error(err instanceof Error ? err.message : String(err));
@@ -1017,34 +1063,74 @@ function CriacaoPage() {
                     <div className="grid gap-2">
                       <span className="text-sm text-muted-foreground">Imagem (opcional)</span>
                       {attachedImageUrl ? (
-                        <div className="flex items-start gap-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                           <img
                             src={attachedImageUrl}
                             alt=""
                             className="max-h-32 w-auto rounded-lg border border-border"
                           />
-                          <button
-                            type="button"
-                            className="text-xs text-destructive underline hover:text-destructive/80"
-                            onClick={() => {
-                              setAttachedImageFile(null);
-                              setAttachedImageUrl(null);
-                            }}
-                          >
-                            Remover
-                          </button>
+                          <div className="grid gap-2">
+                            <RadioGroup
+                              value={attachedImagePlacement}
+                              onValueChange={(v) => setAttachedImagePlacement(v as any)}
+                              className="flex flex-wrap items-center gap-3"
+                            >
+                              <label className="flex items-center gap-1.5 text-sm">
+                                <RadioGroupItem value="frente" />
+                                <span className="text-muted-foreground">Na frente</span>
+                              </label>
+                              <label className="flex items-center gap-1.5 text-sm">
+                                <RadioGroupItem value="verso" />
+                                <span className="text-muted-foreground">No verso</span>
+                              </label>
+                              <label className="flex items-center gap-1.5 text-sm">
+                                <RadioGroupItem value="ambos" />
+                                <span className="text-muted-foreground">Nos dois</span>
+                              </label>
+                            </RadioGroup>
+                            <button
+                              type="button"
+                              className="self-start text-xs text-destructive underline hover:text-destructive/80"
+                              onClick={() => {
+                                setAttachedImageFile(null);
+                                setAttachedImageUrl(null);
+                                setAttachedImagePlacement("frente");
+                              }}
+                            >
+                              Remover imagem
+                            </button>
+                          </div>
                         </div>
                       ) : (
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="text-xs text-muted-foreground"
-                          onChange={handleAttachedImageChange}
-                        />
+                        <>
+                          <div
+                            className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground outline-none"
+                            onPaste={handleAttachedImagePaste}
+                            tabIndex={0}
+                          >
+                            <p>Cole uma imagem (Ctrl+V) ou escolha um arquivo</p>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="text-xs"
+                              onChange={handleAttachedImageChange}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="self-start"
+                            onClick={() => void handleAttachedImagePasteButton()}
+                          >
+                            <ClipboardPaste className="size-3.5" />
+                            <span className="ml-1.5">Colar Imagem da Área de Transferência</span>
+                          </Button>
+                        </>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        Aparece junto da pergunta na revisão. Diferente de "Oclusão de imagem" —
-                        aqui nada fica escondido na figura.
+                        Aparece junto da pergunta e/ou da resposta na revisão. Diferente de "Oclusão
+                        de imagem" — aqui nada fica escondido na figura.
                       </p>
                     </div>
                   </div>

@@ -30,6 +30,7 @@ export type Database = {
           occlusion_regions: Json | null;
           occlusion_target_id: string | null;
           card_type: string | null;
+          image_placement: string | null;
           prev_state: Json | null;
           suspended: boolean;
         };
@@ -54,6 +55,7 @@ export type Database = {
           occlusion_regions?: Json | null;
           occlusion_target_id?: string | null;
           card_type?: string | null;
+          image_placement?: string | null;
           prev_state?: Json | null;
           suspended?: boolean;
         };
@@ -78,6 +80,7 @@ export type Database = {
           occlusion_regions?: Json | null;
           occlusion_target_id?: string | null;
           card_type?: string | null;
+          image_placement?: string | null;
           prev_state?: Json | null;
           suspended?: boolean;
         };

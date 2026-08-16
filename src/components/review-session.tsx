@@ -37,6 +37,7 @@ type Card = {
   occlusion_regions?: OcclusionRegion[] | null;
   occlusion_target_id?: string | null;
   card_type?: string | null;
+  image_placement?: string | null;
 };
 
 type DeckTally = { correct: number; incorrect: number };
@@ -102,6 +103,11 @@ export function ReviewSession({
   const clozeFull = isCloze ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, (_, g) => g) : null;
 
   const isTypeIn = current?.card_type === "digitar";
+  // NULL/undefined predates this feature — those cards only ever showed
+  // the image on front, so that stays the default for them.
+  const imagePlacement = current?.image_placement ?? "frente";
+  const showImageOnFront = imagePlacement === "frente" || imagePlacement === "ambos";
+  const showImageOnBack = imagePlacement === "verso" || imagePlacement === "ambos";
   const comparison =
     isTypeIn && revealed ? compareAnswer(typedAnswer, current?.resposta ?? "") : null;
 
@@ -127,7 +133,9 @@ export function ReviewSession({
     if (!current || loading) return;
     setLoading(true);
     try {
-      await postpone({ data: { id: current.id, days } });
+      await postpone({
+        data: { id: current.id, days, tz_offset_minutes: new Date().getTimezoneOffset() },
+      });
       void qc.invalidateQueries({ queryKey: ["cards"] });
       setRevealed(false);
       setTypedAnswer("");
@@ -195,7 +203,9 @@ export function ReviewSession({
     gradingRef.current = true;
     setLoading(true);
     try {
-      await grade({ data: { id: current.id, rating } });
+      await grade({
+        data: { id: current.id, rating, tz_offset_minutes: new Date().getTimezoneOffset() },
+      });
       void qc.invalidateQueries({ queryKey: ["cards"] });
       void qc.invalidateQueries({ queryKey: ["decks"] });
 
@@ -485,7 +495,7 @@ export function ReviewSession({
               <>
                 <div className="mb-4 text-sm text-muted-foreground">Pergunta</div>
                 <div className="text-base">{maskedQuestion}</div>
-                {current?.image_url && (
+                {current?.image_url && showImageOnFront && (
                   <img
                     src={current.image_url}
                     alt=""
@@ -537,6 +547,13 @@ export function ReviewSession({
                       <div className="text-base">
                         {isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}
                       </div>
+                    )}
+                    {current?.image_url && showImageOnBack && (
+                      <img
+                        src={current.image_url}
+                        alt=""
+                        className="mx-auto mt-4 block max-h-80 w-auto rounded-lg"
+                      />
                     )}
                   </div>
                 )}
