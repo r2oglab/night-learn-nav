@@ -195,6 +195,22 @@ export const reviewCard = createServerFn({ method: "POST" })
       .single();
     if (updateError) throw new Error(updateError.message);
 
+    // Log the review for retention stats (estatísticas). Non-fatal: if
+    // review_logs hasn't been migrated in yet, the review itself still
+    // goes through — this only feeds a feature that doesn't exist yet.
+    try {
+      await context.supabase.from("review_logs").insert({
+        user_id: context.userId,
+        card_id: data.id,
+        deck_id: card.deck_id,
+        rating: data.rating,
+        was_correct: data.rating !== 1, // Rating.Again
+        reviewed_at: now.toISOString(),
+      });
+    } catch (e) {
+      console.warn("Failed to write review_logs", e);
+    }
+
     // update user_settings streak / last_review_date — same local-calendar
     // fix as the due date: "today" has to mean the user's today, not the
     // server's UTC today, or a late-night review could snap the streak.

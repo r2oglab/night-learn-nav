@@ -200,6 +200,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      review_logs: {
+        Row: {
+          card_id: string;
+          deck_id: string;
+          id: string;
+          rating: number;
+          reviewed_at: string;
+          user_id: string;
+          was_correct: boolean;
+        };
+        Insert: {
+          card_id: string;
+          deck_id: string;
+          id?: string;
+          rating: number;
+          reviewed_at?: string;
+          user_id: string;
+          was_correct: boolean;
+        };
+        Update: {
+          card_id?: string;
+          deck_id?: string;
+          id?: string;
+          rating?: number;
+          reviewed_at?: string;
+          user_id?: string;
+          was_correct?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "review_logs_card_id_fkey";
+            columns: ["card_id"];
+            isOneToOne: false;
+            referencedRelation: "cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "review_logs_deck_id_fkey";
+            columns: ["deck_id"];
+            isOneToOne: false;
+            referencedRelation: "decks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
