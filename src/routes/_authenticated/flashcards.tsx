@@ -40,6 +40,7 @@ import { buildCardsCsv, downloadTextFile } from "@/lib/csv-export";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 import ReviewSession from "@/components/review-session";
 import type { DeckRow } from "@/lib/deck-tree";
+import { isLeech, LEECH_THRESHOLD } from "@/lib/leech";
 import {
   ClozeEditor,
   isClozeText,
@@ -259,6 +260,8 @@ function FlashcardsPage() {
 
   const [studySessionCards, setStudySessionCards] = useState<any[] | null>(null);
   const [showStudySession, setShowStudySession] = useState(false);
+  const [showLeechesOnly, setShowLeechesOnly] = useState(false);
+  const leechCards = cards.filter((c) => isLeech(c));
 
   /** Estuda um deck (e subdecks) sem tocar no agendamento do FSRS. */
   function startFreeStudy(deck: DeckRow) {
@@ -405,8 +408,13 @@ function FlashcardsPage() {
               )}
               <div className="min-w-0 flex-1 break-words">
                 {card.suspended && (
-                  <span className="mb-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                  <span className="mb-1 mr-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
                     Suspenso
+                  </span>
+                )}
+                {isLeech(card) && (
+                  <span className="mb-1 inline-block rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] uppercase text-destructive">
+                    Leech · {card.lapses}
                   </span>
                 )}
                 {isClozeText(card.pergunta) ? (
@@ -729,24 +737,35 @@ function FlashcardsPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      placeholder="Buscar em perguntas, respostas e decks..."
-                      className="pl-9 pr-9"
-                    />
-                    {query && (
-                      <button
-                        type="button"
-                        onClick={() => setQuery("")}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="size-4" />
-                        <span className="sr-only">Limpar busca</span>
-                      </button>
-                    )}
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Buscar em perguntas, respostas e decks..."
+                        className="pl-9 pr-9"
+                      />
+                      {query && (
+                        <button
+                          type="button"
+                          onClick={() => setQuery("")}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="size-4" />
+                          <span className="sr-only">Limpar busca</span>
+                        </button>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={showLeechesOnly ? "default" : "outline"}
+                      className="h-9 shrink-0"
+                      title={`Cards com ${LEECH_THRESHOLD}+ erros consecutivos`}
+                      onClick={() => setShowLeechesOnly((v) => !v)}
+                    >
+                      Leeches ({leechCards.length})
+                    </Button>
                   </div>
 
                   {searchResults ? (
@@ -761,6 +780,21 @@ function FlashcardsPage() {
                         </p>
                         <ul className="space-y-3">
                           {searchResults.map((card: any) => renderCardRow(card))}
+                        </ul>
+                      </div>
+                    )
+                  ) : showLeechesOnly ? (
+                    leechCards.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                        Nenhum leech — nenhum card com {LEECH_THRESHOLD}+ erros ainda.
+                      </p>
+                    ) : (
+                      <div className="rounded-xl border border-border bg-card p-3">
+                        <p className="mb-3 text-xs text-muted-foreground">
+                          {leechCards.length} card(s) com {LEECH_THRESHOLD}+ erros consecutivos
+                        </p>
+                        <ul className="space-y-3">
+                          {leechCards.map((card) => renderCardRow(card))}
                         </ul>
                       </div>
                     )

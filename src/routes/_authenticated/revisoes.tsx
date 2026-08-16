@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarClock, ChevronDown, ChevronRight, Loader2, Play } from "lucide-react";
+import { isLeech } from "@/lib/leech";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -250,6 +251,11 @@ function RevisoesPage() {
                     >
                       <div className="flex flex-wrap items-center gap-3">
                         <p className="break-words font-medium">{card.pergunta}</p>
+                        {isLeech(card) && (
+                          <span className="shrink-0 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] uppercase text-destructive">
+                            Leech
+                          </span>
+                        )}
                         <span
                           className={cn(
                             "flex items-center gap-1.5 text-xs",
