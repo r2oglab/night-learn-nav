@@ -249,7 +249,7 @@ function RevisoesPage() {
                       className="rounded-xl border border-border bg-background p-3 sm:p-4"
                     >
                       <div className="flex flex-wrap items-center gap-3">
-                        <p className="font-medium">{card.pergunta}</p>
+                        <p className="break-words font-medium">{card.pergunta}</p>
                         <span
                           className={cn(
                             "flex items-center gap-1.5 text-xs",

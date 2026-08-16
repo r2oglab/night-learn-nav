@@ -156,7 +156,7 @@ export function CardPreviewDialog({
                 {editing ? (
                   <Input value={draftFront} onChange={(e) => setDraftFront(e.target.value)} />
                 ) : (
-                  <div className="whitespace-pre-wrap text-base">{front}</div>
+                  <div className="whitespace-pre-wrap break-words text-base">{front}</div>
                 )}
                 {card.image_url && showImageOnFront && (
                   <img
@@ -174,7 +174,7 @@ export function CardPreviewDialog({
                 {editing ? (
                   <Input value={draftBack} onChange={(e) => setDraftBack(e.target.value)} />
                 ) : (
-                  <div className="whitespace-pre-wrap text-base">{back}</div>
+                  <div className="whitespace-pre-wrap break-words text-base">{back}</div>
                 )}
                 {card.image_url && showImageOnBack && (
                   <img

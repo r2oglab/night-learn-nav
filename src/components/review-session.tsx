@@ -481,7 +481,7 @@ export function ReviewSession({
             </DropdownMenu>
           </div>
 
-          <div className="rounded-lg border border-border p-4 sm:p-6">
+          <div className="rounded-lg border border-border p-4 sm:p-6 break-words">
             {current?.image_url && current?.occlusion_target_id ? (
               <div className="mx-auto max-w-xl">
                 <div className="relative w-full overflow-hidden rounded-lg">

@@ -403,7 +403,7 @@ function FlashcardsPage() {
                   className="size-14 shrink-0 rounded-md border border-border object-cover"
                 />
               )}
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 break-words">
                 {card.suspended && (
                   <span className="mb-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
                     Suspenso
