@@ -15,6 +15,7 @@ import {
   CalendarClock,
   PauseCircle,
   PlayCircle,
+  BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,6 +38,8 @@ import { cn } from "@/lib/utils";
 import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
 import { buildCardsCsv, downloadTextFile } from "@/lib/csv-export";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
+import ReviewSession from "@/components/review-session";
+import type { DeckRow } from "@/lib/deck-tree";
 import {
   ClozeEditor,
   isClozeText,
@@ -229,6 +232,52 @@ function FlashcardsPage() {
     }
     return parts.reverse().join("::");
   };
+
+  // Estudo livre: mesma lógica de rootDeckName/level1SubdeckName que a
+  // Revisões usa pra agrupar o resumo final da sessão.
+  function findRootDeckName(deckId?: string | null): string {
+    if (!deckId) return "(sem deck)";
+    let cur: DeckRow | undefined = deckById[deckId];
+    if (!cur) return "(sem deck)";
+    while (cur && cur.parent_id) cur = deckById[cur.parent_id];
+    return cur?.name ?? "(sem deck)";
+  }
+
+  function findLevel1SubdeckName(deckId?: string | null): string | null {
+    if (!deckId) return null;
+    const chain: DeckRow[] = [];
+    let cur: DeckRow | undefined = deckById[deckId];
+    while (cur) {
+      chain.push(cur);
+      if (!cur.parent_id) break;
+      cur = deckById[cur.parent_id];
+    }
+    if (chain.length < 2) return null;
+    const level1 = chain[chain.length - 2];
+    return level1 ? level1.name : null;
+  }
+
+  const [studySessionCards, setStudySessionCards] = useState<any[] | null>(null);
+  const [showStudySession, setShowStudySession] = useState(false);
+
+  /** Estuda um deck (e subdecks) sem tocar no agendamento do FSRS. */
+  function startFreeStudy(deck: DeckRow) {
+    const ids = new Set(collectDeckIds(deck.id));
+    const subset = cards
+      .filter((c: any) => ids.has(c.deck_id) && !c.suspended)
+      .map((c: any) => ({
+        ...c,
+        rootDeckName: findRootDeckName(c.deck_id),
+        level1SubdeckName: findLevel1SubdeckName(c.deck_id),
+        occlusion_regions: Array.isArray(c.occlusion_regions) ? c.occlusion_regions : null,
+      }));
+    if (subset.length === 0) {
+      toast.info("Nenhum card neste deck.");
+      return;
+    }
+    setStudySessionCards(subset);
+    setShowStudySession(true);
+  }
 
   const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
 
@@ -533,6 +582,16 @@ function FlashcardsPage() {
                   size="icon"
                   variant="ghost"
                   className="size-7"
+                  title="Estudar livre — não altera o agendamento do FSRS"
+                  onClick={() => startFreeStudy(deck)}
+                >
+                  <BookOpen className="size-3.5" />
+                  <span className="sr-only">Estudar livre</span>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
                   title="Exportar deck (CSV)"
                   onClick={() => exportDeck(deck)}
                 >
@@ -623,6 +682,16 @@ function FlashcardsPage() {
                   setPreviewCard((prev) => (prev ? { ...prev, ...updated } : prev));
                 }}
               />
+              {showStudySession && studySessionCards && (
+                <div className="fixed inset-0 z-50">
+                  <ReviewSession
+                    cards={studySessionCards}
+                    freeMode
+                    onExit={() => setShowStudySession(false)}
+                    onComplete={() => setShowStudySession(false)}
+                  />
+                </div>
+              )}
               {occlusionCard && (
                 <ImageOcclusionEditor
                   imageUrl={occlusionCard.image_url}

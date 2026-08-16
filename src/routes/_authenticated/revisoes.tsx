@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { BookOpen, CalendarClock, ChevronDown, ChevronRight, Loader2, Play } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronRight, Loader2, Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -177,37 +177,15 @@ function RevisoesPage() {
     return queue.filter((c) => ids.has(c.deck_id));
   }
 
-  // Estudo livre: todo card não suspenso do deck, independente de data de
-  // vencimento ou limite diário — enriquecido do mesmo jeito que
-  // cardsToReview, mas nunca passa pelo `queue` porque não deve respeitar
-  // o agendamento do FSRS nem o limite diário.
-  const allCardsEnriched = cards
-    .filter((card) => !card.suspended)
-    .map((card) => ({
-      ...card,
-      rootDeckName: findRootDeckName(card.deck_id),
-      level1SubdeckName: findLevel1SubdeckName(card.deck_id),
-      occlusion_regions: Array.isArray(card.occlusion_regions)
-        ? (card.occlusion_regions as unknown as OcclusionRegion[])
-        : null,
-    }));
-
-  function allInSubtree(deckId: string) {
-    const ids = new Set(collectDeckIds(deckId));
-    return allCardsEnriched.filter((c) => ids.has(c.deck_id));
-  }
-
   // Which subset the session runs on: null = the whole queue.
   const [sessionCards, setSessionCards] = useState<typeof queue | null>(null);
-  const [freeMode, setFreeMode] = useState(false);
 
-  function startSession(subset: typeof queue, free = false) {
+  function startSession(subset: typeof queue) {
     if (subset.length === 0) {
-      toast.info(free ? "Nenhum card neste deck." : "Nenhum card para revisar neste deck.");
+      toast.info("Nenhum card para revisar neste deck.");
       return;
     }
     setSessionCards(subset);
-    setFreeMode(free);
     setShowSession(true);
   }
 
@@ -220,7 +198,6 @@ function RevisoesPage() {
     const children = childrenMap[deck.id] ?? [];
     const isOpen = !!openIds[deck.id];
     const subtreeDue = dueInSubtree(deck.id);
-    const subtreeAll = allInSubtree(deck.id);
     const ownDue = queue.filter((c) => c.deck_id === deck.id);
 
     return (
@@ -238,7 +215,7 @@ function RevisoesPage() {
           >
             {subtreeDue.length} para hoje
           </span>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto">
             <Button
               size="sm"
               variant={subtreeDue.length > 0 ? "default" : "ghost"}
@@ -248,17 +225,6 @@ function RevisoesPage() {
             >
               <Play className="size-3.5" />
               <span className="ml-1.5">Estudar</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={subtreeAll.length === 0}
-              className="h-7 px-2.5 text-xs"
-              title="Revisa o deck sem alterar o agendamento do FSRS"
-              onClick={() => startSession(subtreeAll, true)}
-            >
-              <BookOpen className="size-3.5" />
-              <span className="ml-1.5">Livre</span>
             </Button>
           </div>
         </div>
@@ -341,7 +307,6 @@ function RevisoesPage() {
                 <div className="fixed inset-0 z-50">
                   <ReviewSession
                     cards={sessionCards ?? queue}
-                    freeMode={freeMode}
                     onExit={() => setShowSession(false)}
                     onComplete={() => setShowSession(false)}
                   />
@@ -359,14 +324,14 @@ function RevisoesPage() {
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
+              ) : reviewCount === 0 ? (
+                <p className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+                  Nenhum card para revisar hoje.
+                </p>
               ) : (
                 <>
                   <div className="mb-4 flex items-center justify-between text-sm text-muted-foreground">
-                    <span>
-                      {reviewCount > 0
-                        ? `${reviewCount} cards para revisar hoje`
-                        : "Nenhum card para revisar hoje"}
-                    </span>
+                    <span>{reviewCount} cards para revisar hoje</span>
                     {blockedByLimit > 0 && (
                       <span className="text-xs">{blockedByLimit} além do limite diário</span>
                     )}
