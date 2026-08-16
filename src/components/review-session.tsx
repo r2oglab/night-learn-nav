@@ -48,10 +48,12 @@ export function ReviewSession({
   cards,
   onExit,
   onComplete,
+  freeMode = false,
 }: {
   cards: Card[];
   onExit: () => void;
   onComplete?: () => void;
+  freeMode?: boolean;
 }) {
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -203,11 +205,15 @@ export function ReviewSession({
     gradingRef.current = true;
     setLoading(true);
     try {
-      await grade({
-        data: { id: current.id, rating, tz_offset_minutes: new Date().getTimezoneOffset() },
-      });
-      void qc.invalidateQueries({ queryKey: ["cards"] });
-      void qc.invalidateQueries({ queryKey: ["decks"] });
+      if (!freeMode) {
+        // Estudo livre nunca toca a linha do card nem o agendamento do
+        // FSRS — essa chamada só acontece fora do modo livre.
+        await grade({
+          data: { id: current.id, rating, tz_offset_minutes: new Date().getTimezoneOffset() },
+        });
+        void qc.invalidateQueries({ queryKey: ["cards"] });
+        void qc.invalidateQueries({ queryKey: ["decks"] });
+      }
 
       const isCorrect = rating !== Rating.Again;
       const deckName = current.rootDeckName ?? "(sem deck)";
@@ -238,7 +244,9 @@ export function ReviewSession({
         };
       });
 
-      setLastGraded({ id: current.id, deckName, subdeckName, wasCorrect: isCorrect });
+      if (!freeMode) {
+        setLastGraded({ id: current.id, deckName, subdeckName, wasCorrect: isCorrect });
+      }
       setRevealed(false);
       setTypedAnswer("");
       setExplanation(null);
@@ -320,6 +328,7 @@ export function ReviewSession({
           <h2 className="text-lg font-semibold">Sessão finalizada</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {totalCorrect}/{totalCards} acertos no total
+            {freeMode && " · estudo livre, agendamento não foi alterado"}
           </p>
 
           <div className="mt-6 space-y-4">
@@ -434,6 +443,11 @@ export function ReviewSession({
             <div className="text-sm font-medium text-muted-foreground">
               {index + 1}/{sessionCards.length}
             </div>
+            {freeMode && (
+              <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-400">
+                Estudo livre
+              </span>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="ml-auto size-8">
@@ -442,18 +456,22 @@ export function ReviewSession({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  disabled={!lastGraded || loading}
-                  onSelect={() => void handleUndo()}
-                >
-                  <Undo2 className="mr-2 size-4" /> Desfazer
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(1)}>
-                  <CalendarClock className="mr-2 size-4" /> Adiar 1 dia
-                </DropdownMenuItem>
-                <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(7)}>
-                  <CalendarClock className="mr-2 size-4" /> Adiar 7 dias
-                </DropdownMenuItem>
+                {!freeMode && (
+                  <>
+                    <DropdownMenuItem
+                      disabled={!lastGraded || loading}
+                      onSelect={() => void handleUndo()}
+                    >
+                      <Undo2 className="mr-2 size-4" /> Desfazer
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(1)}>
+                      <CalendarClock className="mr-2 size-4" /> Adiar 1 dia
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(7)}>
+                      <CalendarClock className="mr-2 size-4" /> Adiar 7 dias
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuItem onSelect={() => onExit()}>
                   <X className="mr-2 size-4" /> Sair da sessão
                 </DropdownMenuItem>
