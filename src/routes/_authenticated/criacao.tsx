@@ -780,16 +780,21 @@ function CriacaoPage() {
                   <div className="grid gap-3">
                     {!csvPreview ? (
                       <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                        <p>Escolha um arquivo .csv ou .txt exportado do Anki, Excel ou similar</p>
-                        <input
-                          type="file"
-                          accept=".csv,.txt,text/csv,text/plain"
-                          className="text-xs"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) void handleCsvFile(file);
-                          }}
-                        />
+                        <p>
+                          <label className="cursor-pointer text-sky-400 underline underline-offset-2 hover:text-sky-300">
+                            Escolha um arquivo
+                            <input
+                              type="file"
+                              accept=".csv,.txt,text/csv,text/plain"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) void handleCsvFile(file);
+                              }}
+                            />
+                          </label>{" "}
+                          .csv ou .txt exportado do Anki, Excel ou similar
+                        </p>
                         <p className="text-xs">
                           Formato aceito: 2 colunas (pergunta, resposta) ou 3 colunas (deck,
                           pergunta, resposta). Separador vírgula, ponto-e-vírgula ou tabulação —
@@ -922,13 +927,18 @@ function CriacaoPage() {
                         onPaste={handlePaste}
                         tabIndex={0}
                       >
-                        <p>Cole uma imagem (Ctrl+V) ou escolha um arquivo</p>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileChange}
-                          className="text-xs"
-                        />
+                        <p>
+                          Cole uma imagem (Ctrl+V) ou{" "}
+                          <label className="cursor-pointer text-sky-400 underline underline-offset-2 hover:text-sky-300">
+                            escolha um arquivo
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleFileChange}
+                            />
+                          </label>
+                        </p>
                       </div>
                     ) : (
                       <>
