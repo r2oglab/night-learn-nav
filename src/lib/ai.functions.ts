@@ -29,6 +29,10 @@ const ANTHROPIC_MODEL = process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-5";
 type AnthropicBlock = { type: string; text?: string };
 type GeminiPart = { text?: string };
 
+/** 503 from either provider — their own message says these spikes are
+ * usually brief, so callAi() retries once before giving up. */
+class AiOverloadedError extends Error {}
+
 async function callGemini(
   apiKey: string,
   system: string,
@@ -61,6 +65,9 @@ async function callGemini(
       throw new Error(
         `Modelo "${GEMINI_MODEL}" indisponível para esta conta. Ajuste o secret GEMINI_MODEL para um modelo atual.`,
       );
+    }
+    if (response.status === 503) {
+      throw new AiOverloadedError(detail.slice(0, 200));
     }
     throw new Error(`Falha na chamada da IA (${response.status}). ${detail.slice(0, 200)}`);
   }
@@ -99,6 +106,9 @@ async function callAnthropic(
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    if (response.status === 503) {
+      throw new AiOverloadedError(detail.slice(0, 200));
+    }
     throw new Error(`Falha na chamada da IA (${response.status}). ${detail.slice(0, 200)}`);
   }
 
@@ -115,14 +125,32 @@ async function callAnthropic(
 /** Route to whichever provider has a key configured; Gemini wins if both. */
 async function callAi(system: string, user: string, maxTokens: number): Promise<string> {
   const geminiKey = process.env["GEMINI_API_KEY"] ?? process.env["GOOGLE_API_KEY"];
-  if (geminiKey) return callGemini(geminiKey, system, user, maxTokens);
-
   const anthropicKey = process.env["ANTHROPIC_API_KEY"];
-  if (anthropicKey) return callAnthropic(anthropicKey, system, user, maxTokens);
+  const attempt = geminiKey
+    ? () => callGemini(geminiKey, system, user, maxTokens)
+    : anthropicKey
+      ? () => callAnthropic(anthropicKey, system, user, maxTokens)
+      : null;
 
-  throw new Error(
-    "Chave da IA não configurada. Defina GEMINI_API_KEY (gratuito em ai.google.dev) nos secrets do servidor.",
-  );
+  if (!attempt) {
+    throw new Error(
+      "Chave da IA não configurada. Defina GEMINI_API_KEY (gratuito em ai.google.dev) nos secrets do servidor.",
+    );
+  }
+
+  try {
+    return await attempt();
+  } catch (err) {
+    if (!(err instanceof AiOverloadedError)) throw err;
+    // The provider's own message says these spikes are usually brief —
+    // worth one short wait-and-retry before bothering the person with it.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      return await attempt();
+    } catch {
+      throw new Error("A IA está sobrecarregada agora. Tente de novo em alguns segundos.");
+    }
+  }
 }
 
 /** Strip ```json fences the model may wrap the answer in. */
