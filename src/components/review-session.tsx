@@ -39,6 +39,7 @@ type Card = {
   card_type?: string | null;
   image_placement?: string | null;
   explanation?: string | null;
+  tags?: string[] | null;
 };
 
 type DeckTally = { correct: number; incorrect: number };
@@ -501,6 +502,18 @@ export function ReviewSession({
             </div>
 
             <div className="rounded-lg border border-border p-4 sm:p-6 break-words">
+              {current?.tags && current.tags.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-1">
+                  {current.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] text-sky-400"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               {current?.image_url && current?.occlusion_target_id ? (
                 <div className="mx-auto max-w-xl">
                   <div className="relative w-full overflow-hidden rounded-lg">
