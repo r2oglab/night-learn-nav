@@ -33,6 +33,7 @@ export type Database = {
           image_placement: string | null;
           prev_state: Json | null;
           suspended: boolean;
+          explanation: string | null;
         };
         Insert: {
           created_at?: string;
@@ -58,6 +59,7 @@ export type Database = {
           image_placement?: string | null;
           prev_state?: Json | null;
           suspended?: boolean;
+          explanation?: string | null;
         };
         Update: {
           created_at?: string;
@@ -83,6 +85,7 @@ export type Database = {
           image_placement?: string | null;
           prev_state?: Json | null;
           suspended?: boolean;
+          explanation?: string | null;
         };
         Relationships: [
           {

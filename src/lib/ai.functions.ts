@@ -196,17 +196,35 @@ Não repita literalmente a resposta do card. Não use listas longas nem markdown
 
 export const explainCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { pergunta: string; resposta: string }) => {
+  .inputValidator((input: { card_id?: string; pergunta: string; resposta: string }) => {
     const pergunta = input.pergunta?.trim();
     if (!pergunta) throw new Error("Card sem pergunta.");
-    return { pergunta, resposta: input.resposta?.trim() ?? "" };
+    return { card_id: input.card_id, pergunta, resposta: input.resposta?.trim() ?? "" };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const explanation = await callAi(
       EXPLAIN_SYSTEM,
       `Pergunta do card: ${data.pergunta}\nResposta do card: ${data.resposta}\n\nExplique esse assunto.`,
       1500,
     );
+
+    // Persist so the review screen doesn't burn another AI call every time
+    // it re-opens this card. Skipped for cards with no id yet (e.g. a CSV
+    // import preview before it's saved) — nothing to attach it to. Failure
+    // is non-fatal: the person still gets the explanation this time either
+    // way.
+    if (data.card_id) {
+      try {
+        await context.supabase
+          .from("cards")
+          .update({ explanation })
+          .eq("id", data.card_id)
+          .eq("user_id", context.userId);
+      } catch (e) {
+        console.warn("Failed to save card explanation", e);
+      }
+    }
+
     return { explanation };
   });
 

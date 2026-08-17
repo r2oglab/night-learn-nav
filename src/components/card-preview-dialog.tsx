@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { isClozeText, maskCloze, revealCloze } from "@/components/cloze-editor";
 
 export type PreviewCard = {
+  id?: string;
   pergunta: string;
   resposta: string;
   image_url?: string | null;
@@ -17,6 +18,7 @@ export type PreviewCard = {
   occlusion_target_id?: string | null;
   card_type?: string | null;
   image_placement?: string | null;
+  explanation?: string | null;
 };
 
 /**
@@ -56,20 +58,22 @@ export function CardPreviewDialog({
   // A new card means a fresh preview: nothing revealed, no stale explanation.
   useEffect(() => {
     setRevealed(false);
-    setExplanation(null);
+    setExplanation(card?.explanation ?? null);
     setEditing(false);
     setBeforeImprove(null);
     setNoChangeNotice(false);
     setDraftFront(card?.pergunta ?? "");
     setDraftBack(card?.resposta ?? "");
-  }, [card?.pergunta, card?.resposta, open]);
+  }, [card?.pergunta, card?.resposta, card?.explanation, open]);
 
   async function handleExplain() {
     if (!card || explaining) return;
     setExplaining(true);
     try {
       const result = await explain({
-        data: { pergunta: card.pergunta, resposta: card.resposta },
+        data: card.id
+          ? { card_id: card.id, pergunta: card.pergunta, resposta: card.resposta }
+          : { pergunta: card.pergunta, resposta: card.resposta },
       });
       setExplanation(result.explanation);
     } catch (err: unknown) {
@@ -286,8 +290,18 @@ export function CardPreviewDialog({
 
           {explanation && (
             <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <Sparkles className="size-3.5" /> Explicação
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Sparkles className="size-3.5" /> Explicação
+                </div>
+                <button
+                  type="button"
+                  disabled={explaining}
+                  onClick={() => void handleExplain()}
+                  className="shrink-0 text-xs text-sky-400 underline underline-offset-2 hover:text-sky-300 disabled:opacity-50"
+                >
+                  {explaining ? "Gerando..." : "Gerar novamente"}
+                </button>
               </div>
               <div className="whitespace-pre-wrap leading-relaxed">{explanation}</div>
             </div>

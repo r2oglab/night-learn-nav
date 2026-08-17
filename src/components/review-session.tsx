@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { X, Undo2, MoreVertical, CalendarClock, Sparkles } from "lucide-react";
+import { X, Undo2, MoreVertical, CalendarClock, Sparkles, Keyboard } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +38,7 @@ type Card = {
   occlusion_target_id?: string | null;
   card_type?: string | null;
   image_placement?: string | null;
+  explanation?: string | null;
 };
 
 type DeckTally = { correct: number; incorrect: number };
@@ -68,15 +69,18 @@ export function ReviewSession({
   const undo = useServerFn(undoReview);
   const postpone = useServerFn(postponeCard);
   const explain = useServerFn(explainCard);
-  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explanation, setExplanation] = useState<string | null>(
+    () => cards[0]?.explanation ?? null,
+  );
   const [explaining, setExplaining] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   async function handleExplain() {
     if (!current || explaining) return;
     setExplaining(true);
     try {
       const result = await explain({
-        data: { pergunta: current.pergunta, resposta: current.resposta },
+        data: { card_id: current.id, pergunta: current.pergunta, resposta: current.resposta },
       });
       setExplanation(result.explanation);
     } catch (err: unknown) {
@@ -141,8 +145,8 @@ export function ReviewSession({
       void qc.invalidateQueries({ queryKey: ["cards"] });
       setRevealed(false);
       setTypedAnswer("");
-      setExplanation(null);
       const next = index + 1;
+      setExplanation(sessionCards[next]?.explanation ?? null);
       setIndex(next);
       if (next >= sessionCards.length) setFinished(true);
       toast.success(`Card adiado por ${days} dia(s)`);
@@ -182,11 +186,12 @@ export function ReviewSession({
 
       void qc.invalidateQueries({ queryKey: ["cards"] });
       // Step back to the card that was just graded and reset its answer UI.
-      setIndex((i) => Math.max(0, i - 1));
+      const prevIndex = Math.max(0, index - 1);
+      setIndex(prevIndex);
       setFinished(false);
       setRevealed(false);
       setTypedAnswer("");
-      setExplanation(null);
+      setExplanation(sessionCards[prevIndex]?.explanation ?? null);
       setLastGraded(null);
       toast.success("Avaliação desfeita");
     } catch (err: unknown) {
@@ -249,8 +254,8 @@ export function ReviewSession({
       }
       setRevealed(false);
       setTypedAnswer("");
-      setExplanation(null);
       const next = index + 1;
+      setExplanation(sessionCards[next]?.explanation ?? null);
       setIndex(next);
       if (next >= sessionCards.length) {
         setFinished(true);
@@ -265,6 +270,16 @@ export function ReviewSession({
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "?") {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+        return;
+      }
+      if (e.key === "Escape" && showShortcuts) {
+        e.preventDefault();
+        setShowShortcuts(false);
+        return;
+      }
       if (finished || loading || !current) return;
       if (!revealed) {
         // On type-in cards the answer box owns Space, so only Enter reveals.
@@ -290,7 +305,7 @@ export function ReviewSession({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [revealed, loading, finished, current]);
+  }, [revealed, loading, finished, current, showShortcuts]);
 
   if (!sessionCards || sessionCards.length === 0) {
     return (
@@ -438,217 +453,278 @@ export function ReviewSession({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-2 sm:p-4">
-      <div className="relative max-h-full w-full max-w-3xl overflow-y-auto rounded-lg bg-card p-4 shadow-lg sm:p-6">
-        <div className="flex flex-col items-stretch gap-6">
-          <div className="flex items-center gap-3">
-            <div className="text-sm font-medium text-muted-foreground">
-              {index + 1}/{sessionCards.length}
-            </div>
-            {freeMode && (
-              <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-400">
-                Estudo livre
-              </span>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="ml-auto size-8">
-                  <MoreVertical className="size-4" />
-                  <span className="sr-only">Opções da sessão</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {!freeMode && (
-                  <>
-                    <DropdownMenuItem
-                      disabled={!lastGraded || loading}
-                      onSelect={() => void handleUndo()}
-                    >
-                      <Undo2 className="mr-2 size-4" /> Desfazer
-                    </DropdownMenuItem>
-                    <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(1)}>
-                      <CalendarClock className="mr-2 size-4" /> Adiar 1 dia
-                    </DropdownMenuItem>
-                    <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(7)}>
-                      <CalendarClock className="mr-2 size-4" /> Adiar 7 dias
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuItem onSelect={() => onExit()}>
-                  <X className="mr-2 size-4" /> Sair da sessão
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          <div className="rounded-lg border border-border p-4 sm:p-6 break-words">
-            {current?.image_url && current?.occlusion_target_id ? (
-              <div className="mx-auto max-w-xl">
-                <div className="relative w-full overflow-hidden rounded-lg">
-                  <img src={current.image_url} alt="" className="block w-full" />
-                  {(current.occlusion_regions ?? []).map((region) => {
-                    const isTarget = region.id === current.occlusion_target_id;
-                    const stillHidden = !(revealed && isTarget);
-                    if (!stillHidden) return null;
-                    return (
-                      <div
-                        key={region.id}
-                        className={`absolute border-2 ${isTarget ? "border-sky-600 bg-sky-500" : "border-amber-600 bg-amber-400"}`}
-                        style={{
-                          left: `${region.x}%`,
-                          top: `${region.y}%`,
-                          width: `${region.width}%`,
-                          height: `${region.height}%`,
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-                {revealed && current.resposta && (
-                  <div className="mt-4">
-                    <div className="mb-1 text-sm text-muted-foreground">Resposta</div>
-                    <div className="text-base">{current.resposta}</div>
-                  </div>
-                )}
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-2 sm:p-4">
+        <div className="relative max-h-full w-full max-w-3xl overflow-y-auto rounded-lg bg-card p-4 shadow-lg sm:p-6">
+          <div className="flex flex-col items-stretch gap-6">
+            <div className="flex items-center gap-3">
+              <div className="text-sm font-medium text-muted-foreground">
+                {index + 1}/{sessionCards.length}
               </div>
-            ) : (
-              <>
-                <div className="mb-4 text-sm text-muted-foreground">Pergunta</div>
-                <div className="text-base">{maskedQuestion}</div>
-                {current?.image_url && showImageOnFront && (
-                  <img
-                    src={current.image_url}
-                    alt=""
-                    className="mx-auto mt-4 block max-h-80 w-auto rounded-lg"
-                  />
-                )}
+              {freeMode && (
+                <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-400">
+                  Estudo livre
+                </span>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="ml-auto size-8">
+                    <MoreVertical className="size-4" />
+                    <span className="sr-only">Opções da sessão</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setShowShortcuts(true)}>
+                    <Keyboard className="mr-2 size-4" /> Atalhos de teclado
+                  </DropdownMenuItem>
+                  {!freeMode && (
+                    <>
+                      <DropdownMenuItem
+                        disabled={!lastGraded || loading}
+                        onSelect={() => void handleUndo()}
+                      >
+                        <Undo2 className="mr-2 size-4" /> Desfazer
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(1)}>
+                        <CalendarClock className="mr-2 size-4" /> Adiar 1 dia
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(7)}>
+                        <CalendarClock className="mr-2 size-4" /> Adiar 7 dias
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  <DropdownMenuItem onSelect={() => onExit()}>
+                    <X className="mr-2 size-4" /> Sair da sessão
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
-                {isTypeIn && (
-                  <div className="mt-4">
-                    <Input
-                      ref={typeInputRef}
-                      autoFocus
-                      value={typedAnswer}
-                      onChange={(e) => setTypedAnswer(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !revealed) {
-                          e.preventDefault();
-                          setRevealed(true);
-                        }
-                      }}
-                      disabled={revealed}
-                      placeholder="Digite a resposta e aperte Enter"
-                    />
+            <div className="rounded-lg border border-border p-4 sm:p-6 break-words">
+              {current?.image_url && current?.occlusion_target_id ? (
+                <div className="mx-auto max-w-xl">
+                  <div className="relative w-full overflow-hidden rounded-lg">
+                    <img src={current.image_url} alt="" className="block w-full" />
+                    {(current.occlusion_regions ?? []).map((region) => {
+                      const isTarget = region.id === current.occlusion_target_id;
+                      const stillHidden = !(revealed && isTarget);
+                      if (!stillHidden) return null;
+                      return (
+                        <div
+                          key={region.id}
+                          className={`absolute border-2 ${isTarget ? "border-sky-600 bg-sky-500" : "border-amber-600 bg-amber-400"}`}
+                          style={{
+                            left: `${region.x}%`,
+                            top: `${region.y}%`,
+                            width: `${region.width}%`,
+                            height: `${region.height}%`,
+                          }}
+                        />
+                      );
+                    })}
                   </div>
-                )}
-
-                {revealed && (
-                  <div className="mt-6">
-                    <div className="mb-2 text-sm text-muted-foreground">Resposta</div>
-                    {comparison ? (
-                      <div className="grid gap-2 text-base">
-                        <div>
-                          <span className="mr-2 text-xs text-muted-foreground">Você digitou:</span>
-                          {typedAnswer.trim() === "" ? (
-                            <span className="text-muted-foreground">(nada)</span>
-                          ) : (
-                            renderDiff(comparison.typed)
-                          )}
-                        </div>
-                        <div>
-                          <span className="mr-2 text-xs text-muted-foreground">Correta:</span>
-                          {renderDiff(comparison.expected)}
-                        </div>
-                        {comparison.correct && (
-                          <div className="text-xs text-emerald-400">Resposta correta</div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-base">
-                        {isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}
-                      </div>
-                    )}
-                    {current?.image_url && showImageOnBack && (
-                      <img
-                        src={current.image_url}
-                        alt=""
-                        className="mx-auto mt-4 block max-h-80 w-auto rounded-lg"
-                      />
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {revealed && (
-            <div className="grid gap-2">
-              {explanation ? (
-                <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-                  <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                    <Sparkles className="size-3.5" /> Explicação
-                  </div>
-                  <div className="whitespace-pre-wrap leading-relaxed">{explanation}</div>
+                  {revealed && current.resposta && (
+                    <div className="mt-4">
+                      <div className="mb-1 text-sm text-muted-foreground">Resposta</div>
+                      <div className="text-base">{current.resposta}</div>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="self-start"
-                  disabled={explaining}
-                  onClick={() => void handleExplain()}
-                >
-                  <Sparkles className="size-3.5" />
-                  <span className="ml-1.5">
-                    {explaining ? "Explicando..." : "Explicar assunto"}
-                  </span>
-                </Button>
+                <>
+                  <div className="mb-4 text-sm text-muted-foreground">Pergunta</div>
+                  <div className="text-base">{maskedQuestion}</div>
+                  {current?.image_url && showImageOnFront && (
+                    <img
+                      src={current.image_url}
+                      alt=""
+                      className="mx-auto mt-4 block max-h-80 w-auto rounded-lg"
+                    />
+                  )}
+
+                  {isTypeIn && (
+                    <div className="mt-4">
+                      <Input
+                        ref={typeInputRef}
+                        autoFocus
+                        value={typedAnswer}
+                        onChange={(e) => setTypedAnswer(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !revealed) {
+                            e.preventDefault();
+                            setRevealed(true);
+                          }
+                        }}
+                        disabled={revealed}
+                        placeholder="Digite a resposta e aperte Enter"
+                      />
+                    </div>
+                  )}
+
+                  {revealed && (
+                    <div className="mt-6">
+                      <div className="mb-2 text-sm text-muted-foreground">Resposta</div>
+                      {comparison ? (
+                        <div className="grid gap-2 text-base">
+                          <div>
+                            <span className="mr-2 text-xs text-muted-foreground">
+                              Você digitou:
+                            </span>
+                            {typedAnswer.trim() === "" ? (
+                              <span className="text-muted-foreground">(nada)</span>
+                            ) : (
+                              renderDiff(comparison.typed)
+                            )}
+                          </div>
+                          <div>
+                            <span className="mr-2 text-xs text-muted-foreground">Correta:</span>
+                            {renderDiff(comparison.expected)}
+                          </div>
+                          {comparison.correct && (
+                            <div className="text-xs text-emerald-400">Resposta correta</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-base">
+                          {isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}
+                        </div>
+                      )}
+                      {current?.image_url && showImageOnBack && (
+                        <img
+                          src={current.image_url}
+                          alt=""
+                          className="mx-auto mt-4 block max-h-80 w-auto rounded-lg"
+                        />
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          )}
 
-          <div className="flex items-center gap-3">
-            {!revealed ? (
-              <Button className="h-12 w-full sm:h-10 sm:w-auto" onClick={() => setRevealed(true)}>
-                Revelar resposta
-              </Button>
-            ) : (
-              <div className="grid w-full grid-cols-2 gap-2 sm:flex">
-                <Button
-                  className="h-12 w-full sm:h-9 sm:w-auto"
-                  disabled={loading}
-                  onClick={() => void handleRating(Rating.Again)}
-                  variant="destructive"
-                >
-                  Errei
-                </Button>
-                <Button
-                  className="h-12 w-full sm:h-9 sm:w-auto"
-                  disabled={loading}
-                  onClick={() => void handleRating(Rating.Hard)}
-                >
-                  Difícil
-                </Button>
-                <Button
-                  className="h-12 w-full sm:h-9 sm:w-auto"
-                  disabled={loading}
-                  onClick={() => void handleRating(Rating.Good)}
-                >
-                  Bom
-                </Button>
-                <Button
-                  className="h-12 w-full sm:h-9 sm:w-auto"
-                  disabled={loading}
-                  onClick={() => void handleRating(Rating.Easy)}
-                >
-                  Fácil
-                </Button>
+            {revealed && (
+              <div className="grid gap-2">
+                {explanation ? (
+                  <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Sparkles className="size-3.5" /> Explicação
+                      </div>
+                      <button
+                        type="button"
+                        disabled={explaining}
+                        onClick={() => void handleExplain()}
+                        className="shrink-0 text-xs text-sky-400 underline underline-offset-2 hover:text-sky-300 disabled:opacity-50"
+                      >
+                        {explaining ? "Gerando..." : "Gerar novamente"}
+                      </button>
+                    </div>
+                    <div className="whitespace-pre-wrap leading-relaxed">{explanation}</div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    disabled={explaining}
+                    onClick={() => void handleExplain()}
+                  >
+                    <Sparkles className="size-3.5" />
+                    <span className="ml-1.5">
+                      {explaining ? "Explicando..." : "Explicar assunto"}
+                    </span>
+                  </Button>
+                )}
               </div>
             )}
+
+            <div className="flex items-center gap-3">
+              {!revealed ? (
+                <Button className="h-12 w-full sm:h-10 sm:w-auto" onClick={() => setRevealed(true)}>
+                  Revelar resposta
+                </Button>
+              ) : (
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex">
+                  <Button
+                    className="h-12 w-full sm:h-9 sm:w-auto"
+                    disabled={loading}
+                    onClick={() => void handleRating(Rating.Again)}
+                    variant="destructive"
+                  >
+                    Errei
+                  </Button>
+                  <Button
+                    className="h-12 w-full sm:h-9 sm:w-auto"
+                    disabled={loading}
+                    onClick={() => void handleRating(Rating.Hard)}
+                  >
+                    Difícil
+                  </Button>
+                  <Button
+                    className="h-12 w-full sm:h-9 sm:w-auto"
+                    disabled={loading}
+                    onClick={() => void handleRating(Rating.Good)}
+                  >
+                    Bom
+                  </Button>
+                  <Button
+                    className="h-12 w-full sm:h-9 sm:w-auto"
+                    disabled={loading}
+                    onClick={() => void handleRating(Rating.Easy)}
+                  >
+                    Fácil
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg bg-card p-4 shadow-lg sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold">Atalhos de teclado</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                onClick={() => setShowShortcuts(false)}
+              >
+                <X className="size-4" />
+                <span className="sr-only">Fechar</span>
+              </Button>
+            </div>
+            <dl className="space-y-2 text-sm">
+              {[
+                ["Espaço / Enter", "Revelar resposta"],
+                ["1", "Errei"],
+                ["2", "Difícil"],
+                ["3", "Bom"],
+                ["4", "Fácil"],
+                ["?", "Abrir/fechar este painel"],
+              ].map(([key, label]) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <dt className="text-muted-foreground">{label}</dt>
+                  <dd>
+                    <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
+                      {key}
+                    </kbd>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
