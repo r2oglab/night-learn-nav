@@ -29,6 +29,7 @@ import {
   listCards,
   deleteCard,
   updateCard,
+  updateCardTags,
   updateImageOcclusion,
   postponeCard,
   setCardSuspended,
@@ -41,6 +42,7 @@ import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlu
 import ReviewSession from "@/components/review-session";
 import type { DeckRow } from "@/lib/deck-tree";
 import { isLeech, LEECH_THRESHOLD } from "@/lib/leech";
+import { TagInput } from "@/components/tag-input";
 import {
   ClozeEditor,
   isClozeText,
@@ -214,6 +216,15 @@ function FlashcardsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const updateTagsServer = useServerFn(updateCardTags);
+  const updateTagsMutation = useMutation({
+    mutationFn: (vars: { id: string; tags: string[] }) => updateTagsServer({ data: vars }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   // Build maps for tree
   const deckById = Object.fromEntries(decks.map((t: any) => [t.id, t]));
   const childrenMap: Record<string, any[]> = {};
@@ -262,12 +273,29 @@ function FlashcardsPage() {
   const [showStudySession, setShowStudySession] = useState(false);
   const [showLeechesOnly, setShowLeechesOnly] = useState(false);
   const leechCards = cards.filter((c) => isLeech(c));
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+  const allTags = Array.from(new Set(cards.flatMap((c) => (c.tags ?? []) as string[]))).sort();
+  const tagFilteredCards = activeTagFilter
+    ? cards.filter((c) => ((c.tags ?? []) as string[]).includes(activeTagFilter))
+    : [];
+  const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
 
-  /** Estuda um deck (e subdecks) sem tocar no agendamento do FSRS. */
+  function toggleTagFilter(tag: string) {
+    setShowLeechesOnly(false);
+    setActiveTagFilter((prev) => (prev === tag ? null : tag));
+  }
+
+  /** Estuda um deck (e subdecks) sem tocar no agendamento do FSRS. Respeita
+   * o filtro de tag ativo, se houver um, além do deck escolhido. */
   function startFreeStudy(deck: DeckRow) {
     const ids = new Set(collectDeckIds(deck.id));
     const subset = cards
-      .filter((c: any) => ids.has(c.deck_id) && !c.suspended)
+      .filter(
+        (c: any) =>
+          ids.has(c.deck_id) &&
+          !c.suspended &&
+          (!activeTagFilter || ((c.tags ?? []) as string[]).includes(activeTagFilter)),
+      )
       .map((c: any) => ({
         ...c,
         rootDeckName: findRootDeckName(c.deck_id),
@@ -416,6 +444,38 @@ function FlashcardsPage() {
                   <span className="mb-1 inline-block rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] uppercase text-destructive">
                     Leech · {card.lapses}
                   </span>
+                )}
+                <div className="mb-1 flex flex-wrap items-center gap-1">
+                  {((card.tags ?? []) as string[]).map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTagFilter(tag)}
+                      className={cn(
+                        "rounded-full px-1.5 py-0.5 text-[10px]",
+                        activeTagFilter === tag
+                          ? "bg-sky-500 text-white"
+                          : "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25",
+                      )}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setEditingTagsId(editingTagsId === card.id ? null : card.id)}
+                    className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  >
+                    {editingTagsId === card.id ? "fechar" : "+ tag"}
+                  </button>
+                </div>
+                {editingTagsId === card.id && (
+                  <div className="mb-2 max-w-xs">
+                    <TagInput
+                      tags={(card.tags ?? []) as string[]}
+                      onChange={(next) => updateTagsMutation.mutate({ id: card.id, tags: next })}
+                    />
+                  </div>
                 )}
                 {isClozeText(card.pergunta) ? (
                   <>
@@ -762,11 +822,34 @@ function FlashcardsPage() {
                       variant={showLeechesOnly ? "default" : "outline"}
                       className="h-9 shrink-0"
                       title={`Cards com ${LEECH_THRESHOLD}+ erros consecutivos`}
-                      onClick={() => setShowLeechesOnly((v) => !v)}
+                      onClick={() => {
+                        setActiveTagFilter(null);
+                        setShowLeechesOnly((v) => !v);
+                      }}
                     >
                       Leeches ({leechCards.length})
                     </Button>
                   </div>
+
+                  {allTags.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {allTags.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleTagFilter(tag)}
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-xs",
+                            activeTagFilter === tag
+                              ? "bg-sky-500 text-white"
+                              : "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25",
+                          )}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {searchResults ? (
                     searchResults.length === 0 ? (
@@ -795,6 +878,21 @@ function FlashcardsPage() {
                         </p>
                         <ul className="space-y-3">
                           {leechCards.map((card) => renderCardRow(card))}
+                        </ul>
+                      </div>
+                    )
+                  ) : activeTagFilter ? (
+                    tagFilteredCards.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                        Nenhum card com a tag "{activeTagFilter}".
+                      </p>
+                    ) : (
+                      <div className="rounded-xl border border-border bg-card p-3">
+                        <p className="mb-3 text-xs text-muted-foreground">
+                          {tagFilteredCards.length} card(s) com a tag "{activeTagFilter}"
+                        </p>
+                        <ul className="space-y-3">
+                          {tagFilteredCards.map((card) => renderCardRow(card))}
                         </ul>
                       </div>
                     )

@@ -34,6 +34,7 @@ export type Database = {
           prev_state: Json | null;
           suspended: boolean;
           explanation: string | null;
+          tags: string[];
         };
         Insert: {
           created_at?: string;
@@ -60,6 +61,7 @@ export type Database = {
           prev_state?: Json | null;
           suspended?: boolean;
           explanation?: string | null;
+          tags?: string[];
         };
         Update: {
           created_at?: string;
@@ -86,6 +88,7 @@ export type Database = {
           prev_state?: Json | null;
           suspended?: boolean;
           explanation?: string | null;
+          tags?: string[];
         };
         Relationships: [
           {

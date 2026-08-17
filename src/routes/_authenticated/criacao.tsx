@@ -20,6 +20,7 @@ import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-d
 import { Checkbox } from "@/components/ui/checkbox";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 import { ClozeEditor, buildClozeText } from "@/components/cloze-editor";
+import { TagInput } from "@/components/tag-input";
 import {
   parseCsv,
   detectDelimiter,
@@ -52,6 +53,7 @@ function CriacaoPage() {
   const [deckPath, setDeckPath] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [cardType, setCardType] = useState<CardType>("simples");
   const invert = cardType === "invertido";
   const cloze = cardType === "cloze";
@@ -203,12 +205,14 @@ function CriacaoPage() {
       typeIn?: boolean;
       image_url?: string | undefined;
       image_placement?: "frente" | "verso" | "ambos";
+      tags?: string[];
       tz_offset_minutes: number;
     }) => addCard({ data: vars }),
     onSuccess: () => {
       setDeckPath("");
       setQuestion("");
       setAnswer("");
+      setTags([]);
       setClozeText("");
       setHiddenTokens(new Set());
       setAttachedImageFile(null);
@@ -574,6 +578,7 @@ function CriacaoPage() {
                       typeIn,
                       image_url: imageUrl,
                       image_placement: attachedImagePlacement,
+                      tags,
                       tz_offset_minutes: new Date().getTimezoneOffset(),
                     });
                   } catch (err: unknown) {
@@ -1042,15 +1047,21 @@ function CriacaoPage() {
                     )}
                   </div>
                 ) : cardType === "cloze" ? (
-                  <ClozeEditor
-                    text={clozeText}
-                    hidden={hiddenTokens}
-                    onTextChange={(v) => {
-                      setClozeText(v);
-                      setHiddenTokens(new Set());
-                    }}
-                    onToggleToken={toggleClozeToken}
-                  />
+                  <div className="grid gap-3">
+                    <ClozeEditor
+                      text={clozeText}
+                      hidden={hiddenTokens}
+                      onTextChange={(v) => {
+                        setClozeText(v);
+                        setHiddenTokens(new Set());
+                      }}
+                      onToggleToken={toggleClozeToken}
+                    />
+                    <label className="flex flex-col gap-2 text-sm text-muted-foreground">
+                      Tags (opcional)
+                      <TagInput tags={tags} onChange={setTags} />
+                    </label>
+                  </div>
                 ) : (
                   <div className="grid gap-3">
                     <label className="flex flex-col gap-2 text-sm text-muted-foreground">
@@ -1068,6 +1079,11 @@ function CriacaoPage() {
                         onChange={(event) => setAnswer(event.target.value)}
                         placeholder="Escreva a resposta do card"
                       />
+                    </label>
+
+                    <label className="flex flex-col gap-2 text-sm text-muted-foreground">
+                      Tags (opcional)
+                      <TagInput tags={tags} onChange={setTags} />
                     </label>
 
                     <div className="grid gap-2">

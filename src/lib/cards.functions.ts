@@ -69,6 +69,7 @@ export const createCard = createServerFn({ method: "POST" })
       typeIn?: boolean;
       image_url?: string | undefined;
       image_placement?: "frente" | "verso" | "ambos" | undefined;
+      tags?: string[] | undefined;
       tz_offset_minutes: number;
     }) => {
       const deckId = input.deck_id?.trim();
@@ -83,6 +84,7 @@ export const createCard = createServerFn({ method: "POST" })
         input.image_placement === "verso" || input.image_placement === "ambos"
           ? input.image_placement
           : "frente";
+      const tags = Array.from(new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean)));
       return {
         deck_id: deckId,
         pergunta,
@@ -92,6 +94,7 @@ export const createCard = createServerFn({ method: "POST" })
         typeIn: !!input.typeIn,
         image_url: input.image_url?.trim() || undefined,
         image_placement: placement,
+        tags,
         tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
       };
     },
@@ -107,6 +110,7 @@ export const createCard = createServerFn({ method: "POST" })
       card_type: data.typeIn ? "digitar" : null,
       image_url: data.image_url ?? null,
       image_placement: data.image_url ? data.image_placement : null,
+      tags: data.tags,
       ...newCardFields(data.tz_offset_minutes),
     });
 
@@ -128,6 +132,7 @@ export const createCard = createServerFn({ method: "POST" })
         resposta: data.pergunta,
         image_url: data.image_url ?? null,
         image_placement: data.image_url ? swappedPlacement : null,
+        tags: data.tags,
         ...newCardFields(data.tz_offset_minutes),
       });
     }
@@ -284,6 +289,29 @@ export const updateCard = createServerFn({ method: "POST" })
       .from("cards")
       .update({ pergunta: data.pergunta, resposta: data.resposta })
       .eq("id", data.id)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
+  });
+
+/** Edits just the tags — separate from updateCard so tagging a card never
+ * requires touching pergunta/resposta, and works for every card type
+ * (oclusão, importado, gerado por IA) even though only manual creation
+ * accepts tags up front. */
+export const updateCardTags = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; tags: string[] }) => {
+    if (!input.id?.trim()) throw new Error("ID do card inválido.");
+    const tags = Array.from(new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean)));
+    return { id: input.id, tags };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: updated, error } = await context.supabase
+      .from("cards")
+      .update({ tags: data.tags })
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
       .select("*")
       .single();
     if (error) throw new Error(error.message);
