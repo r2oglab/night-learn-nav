@@ -724,6 +724,21 @@ function FlashcardsPage() {
       (sum, id) => sum + cards.filter((c: any) => c.deck_id === id).length,
       0,
     );
+    const subtreeIds = new Set(collectDeckIds(deck.id));
+    const subtreeCardIds = cards.filter((c) => subtreeIds.has(c.deck_id)).map((c) => c.id);
+    const subtreeAllSelected =
+      subtreeCardIds.length > 0 && subtreeCardIds.every((id) => selectedIds.has(id));
+
+    function toggleSubtreeSelected() {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of subtreeCardIds) {
+          if (subtreeAllSelected) next.delete(id);
+          else next.add(id);
+        }
+        return next;
+      });
+    }
 
     return (
       <section key={deck.id} className="rounded-xl border border-border bg-card p-3">
@@ -731,6 +746,27 @@ function FlashcardsPage() {
           <Button size="sm" variant="ghost" onClick={() => toggle(deck.id)}>
             {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
+
+          {selectionMode && (
+            <button
+              type="button"
+              disabled={subtreeCardIds.length === 0}
+              onClick={toggleSubtreeSelected}
+              title={
+                subtreeAllSelected
+                  ? "Desmarcar todos os cards deste deck (e subdecks)"
+                  : "Selecionar todos os cards deste deck (e subdecks)"
+              }
+              className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30"
+            >
+              {subtreeAllSelected ? (
+                <CheckSquare className="size-4 text-primary" />
+              ) : (
+                <Square className="size-4" />
+              )}
+              <span className="sr-only">Selecionar deck</span>
+            </button>
+          )}
 
           {editingDeckId === deck.id ? (
             <div className="flex w-full flex-wrap items-end gap-2">
