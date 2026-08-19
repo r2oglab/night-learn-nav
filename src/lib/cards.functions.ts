@@ -15,6 +15,7 @@ export const listCards = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("cards")
       .select("*")
+      .is("deleted_at", null)
       .order("due", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -252,7 +253,86 @@ export const reviewCard = createServerFn({ method: "POST" })
     return updated;
   });
 
+/** Moves a card to the trash — sets deleted_at instead of deleting it for
+ * real, so it drops out of listCards (and everywhere that reads from it)
+ * but can still be restored. Image cleanup doesn't run here: the row still
+ * exists, so cleanupOrphanedCardImages correctly sees the image as still
+ * in use. */
 export const deleteCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string }) => {
+    if (!input.id?.trim()) throw new Error("ID do card inválido.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const { data: updated, error } = await context.supabase
+      .from("cards")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
+  });
+
+const TRASH_AUTO_PURGE_DAYS = 30;
+
+/** Lists trashed cards, and lazily hard-deletes anything past the purge
+ * window first — a lightweight sweep instead of a scheduled job, since
+ * there's no cron infra in this app. */
+export const listTrashedCards = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const cutoff = new Date(Date.now() - TRASH_AUTO_PURGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: expired } = await context.supabase
+      .from("cards")
+      .select("id, image_url")
+      .eq("user_id", context.userId)
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", cutoff);
+
+    if (expired && expired.length > 0) {
+      const ids = expired.map((c: { id: string }) => c.id);
+      await context.supabase.from("cards").delete().in("id", ids);
+      await cleanupOrphanedCardImages(
+        context.supabase,
+        expired.map((c: { image_url: string | null }) => c.image_url),
+      );
+    }
+
+    const { data, error } = await context.supabase
+      .from("cards")
+      .select("*")
+      .eq("user_id", context.userId)
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const restoreCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string }) => {
+    if (!input.id?.trim()) throw new Error("ID do card inválido.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const { data: updated, error } = await context.supabase
+      .from("cards")
+      .update({ deleted_at: null })
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
+  });
+
+/** Real deletion — only reachable from the trash view. Same cleanup the old
+ * deleteCard used to do unconditionally. */
+export const permanentlyDeleteCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string }) => {
     if (!input.id?.trim()) throw new Error("ID do card inválido.");
@@ -263,15 +343,107 @@ export const deleteCard = createServerFn({ method: "POST" })
       .from("cards")
       .delete()
       .eq("id", data.id)
+      .eq("user_id", context.userId)
       .select("*")
       .single();
     if (error) throw new Error(error.message);
 
-    // Occlusion images are shared by every card cut from the same picture,
-    // so this only removes the file once no card references it anymore.
     await cleanupOrphanedCardImages(context.supabase, [deleted?.image_url]);
 
     return deleted;
+  });
+
+/** Clones a card as a fresh, unscheduled card — a duplicate is a starting
+ * point for a variant, not a copy of the original's study progress. */
+export const duplicateCard = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; tz_offset_minutes: number }) => {
+    if (!input.id?.trim()) throw new Error("ID do card inválido.");
+    return {
+      id: input.id,
+      tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
+    };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: original, error: fetchError } = await context.supabase
+      .from("cards")
+      .select("*")
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .single();
+    if (fetchError) throw new Error(fetchError.message);
+    if (!original) throw new Error("Card não encontrado.");
+
+    const { data: inserted, error } = await context.supabase
+      .from("cards")
+      .insert({
+        user_id: context.userId,
+        deck_id: original.deck_id,
+        pergunta: original.pergunta,
+        resposta: original.resposta,
+        card_type: original.card_type,
+        image_url: original.image_url,
+        image_placement: original.image_placement,
+        tags: original.tags,
+        ...newCardFields(data.tz_offset_minutes),
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return inserted;
+  });
+
+/** Bulk move — same deck-move a single card gets, applied to many at once. */
+export const bulkMoveCards = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { ids: string[]; deck_id: string }) => {
+    const ids = (input.ids ?? []).filter(Boolean);
+    if (ids.length === 0) throw new Error("Nenhum card selecionado.");
+    if (!input.deck_id?.trim()) throw new Error("Informe o deck de destino.");
+    return { ids, deck_id: input.deck_id };
+  })
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("cards")
+      .update({ deck_id: data.deck_id })
+      .in("id", data.ids)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { count: data.ids.length };
+  });
+
+export const bulkSetSuspended = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { ids: string[]; suspended: boolean }) => {
+    const ids = (input.ids ?? []).filter(Boolean);
+    if (ids.length === 0) throw new Error("Nenhum card selecionado.");
+    return { ids, suspended: !!input.suspended };
+  })
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("cards")
+      .update({ suspended: data.suspended })
+      .in("id", data.ids)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { count: data.ids.length };
+  });
+
+export const bulkDeleteCards = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { ids: string[] }) => {
+    const ids = (input.ids ?? []).filter(Boolean);
+    if (ids.length === 0) throw new Error("Nenhum card selecionado.");
+    return { ids };
+  })
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("cards")
+      .update({ deleted_at: new Date().toISOString() })
+      .in("id", data.ids)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { count: data.ids.length };
   });
 
 export const updateCard = createServerFn({ method: "POST" })

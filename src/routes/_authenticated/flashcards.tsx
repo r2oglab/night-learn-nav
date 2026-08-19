@@ -16,6 +16,11 @@ import {
   PauseCircle,
   PlayCircle,
   BookOpen,
+  Copy,
+  CheckSquare,
+  Square,
+  Undo2,
+  FolderInput,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,6 +38,13 @@ import {
   updateImageOcclusion,
   postponeCard,
   setCardSuspended,
+  duplicateCard,
+  bulkMoveCards,
+  bulkSetSuspended,
+  bulkDeleteCards,
+  listTrashedCards,
+  restoreCard,
+  permanentlyDeleteCard,
 } from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -122,7 +134,103 @@ function FlashcardsPage() {
     mutationFn: (id: string) => removeCard({ data: { id } }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
-      toast.success("Card excluído");
+      void queryClient.invalidateQueries({ queryKey: ["trashedCards"] });
+      toast.success("Card movido para a lixeira");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const duplicateServer = useServerFn(duplicateCard);
+  const duplicateMutation = useMutation({
+    mutationFn: (id: string) =>
+      duplicateServer({ data: { id, tz_offset_minutes: new Date().getTimezoneOffset() } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success("Card duplicado");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Bulk actions — a separate selection lens from the deck tree/search/tag
+  // filters above, same "one mode at a time" idea.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectionMode() {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }
+
+  const bulkMoveServer = useServerFn(bulkMoveCards);
+  const bulkMoveMutation = useMutation({
+    mutationFn: (vars: { ids: string[]; deck_id: string }) => bulkMoveServer({ data: vars }),
+    onSuccess: (res) => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success(`${res.count} card(s) movido(s)`);
+      exitSelectionMode();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const bulkSuspendServer = useServerFn(bulkSetSuspended);
+  const bulkSuspendMutation = useMutation({
+    mutationFn: (vars: { ids: string[]; suspended: boolean }) => bulkSuspendServer({ data: vars }),
+    onSuccess: (res, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success(`${res.count} card(s) ${vars.suspended ? "suspenso(s)" : "reativado(s)"}`);
+      exitSelectionMode();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const bulkDeleteServer = useServerFn(bulkDeleteCards);
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (vars: { ids: string[] }) => bulkDeleteServer({ data: vars }),
+    onSuccess: (res) => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      void queryClient.invalidateQueries({ queryKey: ["trashedCards"] });
+      toast.success(`${res.count} card(s) movido(s) para a lixeira`);
+      exitSelectionMode();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Trash — a whole separate view, not another lens on the same list, since
+  // it reads from its own query (listCards never returns trashed cards).
+  const [showTrash, setShowTrash] = useState(false);
+  const fetchTrashed = useServerFn(listTrashedCards);
+  const { data: trashedCards = [], isLoading: trashLoading } = useQuery({
+    queryKey: ["trashedCards"],
+    queryFn: () => fetchTrashed(),
+    enabled: showTrash,
+  });
+
+  const restoreServer = useServerFn(restoreCard);
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => restoreServer({ data: { id } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      void queryClient.invalidateQueries({ queryKey: ["trashedCards"] });
+      toast.success("Card restaurado");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const permanentDeleteServer = useServerFn(permanentlyDeleteCard);
+  const permanentDeleteMutation = useMutation({
+    mutationFn: (id: string) => permanentDeleteServer({ data: { id } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["trashedCards"] });
+      toast.success("Card excluído permanentemente");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -427,6 +535,20 @@ function FlashcardsPage() {
         ) : (
           <>
             <div className={cn("flex gap-3", card.suspended && "opacity-50")}>
+              {selectionMode && (
+                <button
+                  type="button"
+                  onClick={() => toggleSelected(card.id)}
+                  className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground"
+                >
+                  {selectedIds.has(card.id) ? (
+                    <CheckSquare className="size-4 text-primary" />
+                  ) : (
+                    <Square className="size-4" />
+                  )}
+                  <span className="sr-only">Selecionar card</span>
+                </button>
+              )}
               {card.image_url && !card.occlusion_target_id && (
                 <img
                   src={card.image_url}
@@ -525,6 +647,17 @@ function FlashcardsPage() {
                   <span className="sr-only">Editar</span>
                 </Button>
               )}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-7"
+                title="Duplicar card"
+                disabled={duplicateMutation.isPending}
+                onClick={() => duplicateMutation.mutate(card.id)}
+              >
+                <Copy className="size-3.5" />
+                <span className="sr-only">Duplicar card</span>
+              </Button>
               <Button
                 size="icon"
                 variant="ghost"
@@ -783,7 +916,84 @@ function FlashcardsPage() {
                   }}
                 />
               )}
-              {decksLoading ? (
+              <div className="mb-3 flex items-center justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant={selectionMode ? "default" : "outline"}
+                  onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+                >
+                  {selectionMode ? "Cancelar seleção" : "Selecionar"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={showTrash ? "default" : "outline"}
+                  onClick={() => setShowTrash((v) => !v)}
+                >
+                  {showTrash ? "Voltar" : "Lixeira"}
+                </Button>
+              </div>
+              {showTrash ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Cards excluídos ficam aqui por 30 dias antes de sumir de vez.
+                  </p>
+                  {trashLoading ? (
+                    <div className="flex justify-center py-12">
+                      <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : trashedCards.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                      Lixeira vazia.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3 rounded-xl border border-border bg-card p-3">
+                      {trashedCards.map((card) => (
+                        <li
+                          key={card.id}
+                          className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                        >
+                          <div className="min-w-0 flex-1 break-words">
+                            <p className="font-medium">{card.pergunta}</p>
+                            <p className="text-sm text-muted-foreground">{card.resposta}</p>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {getPath(card.deck_id)}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-7"
+                              title="Restaurar"
+                              disabled={restoreMutation.isPending}
+                              onClick={() => restoreMutation.mutate(card.id)}
+                            >
+                              <Undo2 className="size-3.5" />
+                              <span className="sr-only">Restaurar</span>
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              title="Excluir permanentemente"
+                              disabled={permanentDeleteMutation.isPending}
+                              onClick={() => {
+                                const ok = window.confirm(
+                                  `Excluir "${card.pergunta}" permanentemente? Isso não pode ser desfeito.`,
+                                );
+                                if (ok) permanentDeleteMutation.mutate(card.id);
+                              }}
+                            >
+                              <Trash2 className="size-3.5" />
+                              <span className="sr-only">Excluir permanentemente</span>
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : decksLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="size-5 animate-spin text-muted-foreground" />
                 </div>
@@ -830,6 +1040,78 @@ function FlashcardsPage() {
                       Leeches ({leechCards.length})
                     </Button>
                   </div>
+
+                  {selectionMode && selectedIds.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-2">
+                      <span className="text-xs text-muted-foreground">
+                        {selectedIds.size} selecionado(s)
+                      </span>
+                      <select
+                        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                        defaultValue=""
+                        onChange={(e) => {
+                          const deckId = e.target.value;
+                          if (!deckId) return;
+                          bulkMoveMutation.mutate({
+                            ids: Array.from(selectedIds),
+                            deck_id: deckId,
+                          });
+                          e.target.value = "";
+                        }}
+                      >
+                        <option value="" disabled>
+                          Mover para...
+                        </option>
+                        {decks.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {getPath(d.id)}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        disabled={bulkSuspendMutation.isPending}
+                        onClick={() =>
+                          bulkSuspendMutation.mutate({
+                            ids: Array.from(selectedIds),
+                            suspended: true,
+                          })
+                        }
+                      >
+                        Suspender
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        disabled={bulkSuspendMutation.isPending}
+                        onClick={() =>
+                          bulkSuspendMutation.mutate({
+                            ids: Array.from(selectedIds),
+                            suspended: false,
+                          })
+                        }
+                      >
+                        Reativar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        disabled={bulkDeleteMutation.isPending}
+                        onClick={() => {
+                          const ok = window.confirm(
+                            `Excluir ${selectedIds.size} card(s)? Vão para a lixeira.`,
+                          );
+                          if (ok) bulkDeleteMutation.mutate({ ids: Array.from(selectedIds) });
+                        }}
+                      >
+                        Excluir
+                      </Button>
+                    </div>
+                  )}
 
                   {allTags.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5">
