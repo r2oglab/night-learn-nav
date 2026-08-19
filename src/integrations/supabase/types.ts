@@ -146,6 +146,8 @@ export type Database = {
           parent_id: string | null;
           daily_limit: number | null;
           user_id: string;
+          sort_order: number | null;
+          pinned: boolean;
         };
         Insert: {
           created_at?: string;
@@ -154,6 +156,8 @@ export type Database = {
           parent_id?: string | null;
           daily_limit?: number | null;
           user_id: string;
+          sort_order?: number | null;
+          pinned?: boolean;
         };
         Update: {
           created_at?: string;
@@ -162,6 +166,8 @@ export type Database = {
           parent_id?: string | null;
           daily_limit?: number | null;
           user_id?: string;
+          sort_order?: number | null;
+          pinned?: boolean;
         };
         Relationships: [
           {

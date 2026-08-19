@@ -9,7 +9,7 @@ export const listDecks = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("decks")
-      .select("id,user_id,name,parent_id,created_at")
+      .select("id,user_id,name,parent_id,created_at,daily_limit,sort_order,pinned")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []) as DeckRow[];
@@ -117,6 +117,49 @@ export const deleteDeck = createServerFn({ method: "POST" })
       (doomedCards ?? []).map((c: { image_url: string | null }) => c.image_url),
     );
 
+    return { ok: true };
+  });
+
+export const setDeckPinned = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; pinned: boolean }) => {
+    if (!input.id?.trim()) throw new Error("ID do deck inválido.");
+    return { id: input.id, pinned: !!input.pinned };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: updated, error } = await context.supabase
+      .from("decks")
+      .update({ pinned: data.pinned })
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
+  });
+
+/** Persists a full sibling group's order in one call — the caller (moving
+ * one deck up or down) recomputes sequential values for every sibling, not
+ * just the two that swapped, so ordering stays deterministic instead of
+ * accumulating null/tied sort_order gaps over time. */
+export const reorderDecks = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { orders: { id: string; sort_order: number }[] }) => {
+    const orders = (input.orders ?? []).filter((o) => o?.id);
+    if (orders.length === 0) throw new Error("Nada para reordenar.");
+    return { orders };
+  })
+  .handler(async ({ data, context }) => {
+    // Supabase JS has no multi-row "different value per row" update in one
+    // call, so this is one UPDATE per deck — fine at sibling-list scale.
+    for (const o of data.orders) {
+      const { error } = await context.supabase
+        .from("decks")
+        .update({ sort_order: o.sort_order })
+        .eq("id", o.id)
+        .eq("user_id", context.userId);
+      if (error) throw new Error(error.message);
+    }
     return { ok: true };
   });
 

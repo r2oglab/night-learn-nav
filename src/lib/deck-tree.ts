@@ -4,7 +4,23 @@ export type DeckRow = {
   name: string;
   parent_id: string | null;
   created_at: string;
+  sort_order?: number | null;
+  pinned?: boolean;
 };
+
+/** Fixed decks first, then by sort_order (nulls last — never-reordered
+ * decks fall back to alphabetical among themselves). Used everywhere
+ * sibling decks are listed, so pin/reorder shows up consistently in every
+ * tree view. */
+export function compareDecks(a: DeckRow, b: DeckRow): number {
+  const aPinned = a.pinned ? 0 : 1;
+  const bPinned = b.pinned ? 0 : 1;
+  if (aPinned !== bPinned) return aPinned - bPinned;
+  const aOrder = a.sort_order ?? Number.MAX_SAFE_INTEGER;
+  const bOrder = b.sort_order ?? Number.MAX_SAFE_INTEGER;
+  if (aOrder !== bOrder) return aOrder - bOrder;
+  return a.name.localeCompare(b.name);
+}
 
 export type DeckNode = DeckRow & {
   children: DeckNode[];
@@ -51,6 +67,12 @@ export function buildDeckTree(decks: DeckRow[]): DeckNode[] {
   for (const root of roots) {
     setDepth(root, 0);
   }
+
+  const sortRecursive = (nodes: DeckNode[]) => {
+    nodes.sort(compareDecks);
+    for (const node of nodes) sortRecursive(node.children);
+  };
+  sortRecursive(roots);
 
   return roots;
 }

@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { listCards } from "@/lib/cards.functions";
 import { listDecks } from "@/lib/decks.functions";
+import { compareDecks } from "@/lib/deck-tree";
 import { getUserSettings } from "@/lib/user_settings.functions";
 import { applyDailyLimits } from "@/lib/daily-limits";
 import { capitalizeFirst, cn } from "@/lib/utils";
@@ -159,6 +160,9 @@ function RevisoesPage() {
     const pid = d.parent_id ?? "__root";
     childrenMap[pid] = childrenMap[pid] || [];
     childrenMap[pid].push(d);
+  }
+  for (const pid of Object.keys(childrenMap)) {
+    childrenMap[pid]?.sort(compareDecks);
   }
   const roots = childrenMap["__root"] ?? [];
 

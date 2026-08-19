@@ -21,6 +21,9 @@ import {
   Square,
   Undo2,
   FolderInput,
+  Star,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,7 +32,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { listDecks, deleteDeck, updateDeck } from "@/lib/decks.functions";
+import {
+  listDecks,
+  deleteDeck,
+  updateDeck,
+  setDeckPinned,
+  reorderDecks,
+} from "@/lib/decks.functions";
+import { compareDecks } from "@/lib/deck-tree";
 import {
   listCards,
   deleteCard,
@@ -312,6 +322,40 @@ function FlashcardsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const pinDeckServer = useServerFn(setDeckPinned);
+  const pinDeckMutation = useMutation({
+    mutationFn: (vars: { id: string; pinned: boolean }) => pinDeckServer({ data: vars }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["decks"] }),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const reorderDecksServer = useServerFn(reorderDecks);
+  const reorderMutation = useMutation({
+    mutationFn: (vars: { orders: { id: string; sort_order: number }[] }) =>
+      reorderDecksServer({ data: vars }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["decks"] }),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  /** Moves a deck up/down among its siblings (same parent) by recomputing
+   * sequential sort_order for the whole sibling group in current display
+   * order, then swapping the two that moved. */
+  function moveDeck(deck: DeckRow, direction: -1 | 1) {
+    const siblings = childrenMap[deck.parent_id ?? "__root"] ?? [];
+    const index = siblings.findIndex((d) => d.id === deck.id);
+    const targetIndex = index + direction;
+    if (index === -1 || targetIndex < 0 || targetIndex >= siblings.length) return;
+
+    const reordered = siblings.map((d, i) => ({ id: d.id, sort_order: i }));
+    const current = reordered[index];
+    const target = reordered[targetIndex];
+    if (!current || !target) return;
+    const tmp = current.sort_order;
+    current.sort_order = target.sort_order;
+    target.sort_order = tmp;
+    reorderMutation.mutate({ orders: reordered });
+  }
+
   const updateServer = useServerFn(updateCard);
   const updateMutation = useMutation({
     mutationFn: (vars: { id: string; pergunta: string; resposta: string }) =>
@@ -340,6 +384,9 @@ function FlashcardsPage() {
     const pid = t.parent_id ?? "__root";
     childrenMap[pid] = childrenMap[pid] || [];
     childrenMap[pid].push(t);
+  }
+  for (const pid of Object.keys(childrenMap)) {
+    childrenMap[pid]?.sort(compareDecks);
   }
 
   const getPath = (deckId: string) => {
@@ -728,6 +775,8 @@ function FlashcardsPage() {
     const subtreeCardIds = cards.filter((c) => subtreeIds.has(c.deck_id)).map((c) => c.id);
     const subtreeAllSelected =
       subtreeCardIds.length > 0 && subtreeCardIds.every((id) => selectedIds.has(id));
+    const siblings = childrenMap[deck.parent_id ?? "__root"] ?? [];
+    const siblingIndex = siblings.findIndex((d) => d.id === deck.id);
 
     function toggleSubtreeSelected() {
       setSelectedIds((prev) => {
@@ -819,6 +868,39 @@ function FlashcardsPage() {
                 </span>
               )}
               <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Mover pra cima"
+                  disabled={siblingIndex <= 0}
+                  onClick={() => moveDeck(deck, -1)}
+                >
+                  <ArrowUp className="size-3.5" />
+                  <span className="sr-only">Mover pra cima</span>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Mover pra baixo"
+                  disabled={siblingIndex === -1 || siblingIndex >= siblings.length - 1}
+                  onClick={() => moveDeck(deck, 1)}
+                >
+                  <ArrowDown className="size-3.5" />
+                  <span className="sr-only">Mover pra baixo</span>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title={deck.pinned ? "Desafixar" : "Fixar no topo"}
+                  disabled={pinDeckMutation.isPending}
+                  onClick={() => pinDeckMutation.mutate({ id: deck.id, pinned: !deck.pinned })}
+                >
+                  <Star className={cn("size-3.5", deck.pinned && "fill-current text-primary")} />
+                  <span className="sr-only">{deck.pinned ? "Desafixar" : "Fixar no topo"}</span>
+                </Button>
                 <Button
                   size="icon"
                   variant="ghost"
