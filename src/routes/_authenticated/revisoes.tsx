@@ -106,6 +106,19 @@ function RevisoesPage() {
     return chain[chain.length - 2].name;
   }
 
+  // A subdeck without its own exam_date inherits the nearest ancestor's —
+  // set the date on the module (root) and every subdeck picks it up.
+  function findNearestExamDate(deckId?: string | null): string | null {
+    let cur: { exam_date?: string | null; parent_id?: string | null } | null | undefined = deckId
+      ? deckById[deckId]
+      : null;
+    while (cur) {
+      if (cur.exam_date) return cur.exam_date;
+      cur = cur.parent_id ? deckById[cur.parent_id] : null;
+    }
+    return null;
+  }
+
   // Cards due today or earlier, each tagged with its root deck name — the
   // tag rides along into ReviewSession so the end-of-session summary can
   // group correct/incorrect per deck without a second lookup.
@@ -124,6 +137,9 @@ function RevisoesPage() {
       ...card,
       rootDeckName: findRootDeckName(card.deck_id),
       level1SubdeckName: findLevel1SubdeckName(card.deck_id),
+      // A card with zero reps has never been graded — that's the "new
+      // card" distinction the separate daily limit cares about.
+      isNew: card.reps === 0,
       // occlusion_regions comes back as generic Json from the DB; narrow it
       // to the shape ReviewSession expects, defaulting to null if it's
       // anything unexpected rather than trusting the cast blindly.
@@ -134,22 +150,36 @@ function RevisoesPage() {
 
   const todayISO = `${todayStart.getFullYear()}-${String(todayStart.getMonth() + 1).padStart(2, "0")}-${String(todayStart.getDate()).padStart(2, "0")}`;
 
+  // Cards due soonest for a deck with an exam coming up jump the queue —
+  // ties (including "no exam date at all") keep the original due-date
+  // order, since Array#sort is stable.
+  const prioritizedCards = [...cardsToReview].sort((a, b) => {
+    const examA = findNearestExamDate(a.deck_id);
+    const examB = findNearestExamDate(b.deck_id);
+    if (examA && examB) return examA < examB ? -1 : examA > examB ? 1 : 0;
+    if (examA) return -1;
+    if (examB) return 1;
+    return 0;
+  });
+
   // Cards already reviewed today consume the same allowance, so reopening
-  // the app doesn't hand out a fresh quota.
-  const reviewedTodayDeckIds = cards
+  // the app doesn't hand out a fresh quota. reps === 1 on a card reviewed
+  // today means that review was its first — i.e. it was new before then.
+  const reviewedToday = cards
     .filter((c) => (c.last_review ?? "").slice(0, 10) === todayISO)
-    .map((c) => c.deck_id);
+    .map((c) => ({ deck_id: c.deck_id, isNew: c.reps === 1 }));
 
   const { allowed: limitedCards, blocked: blockedByLimit } = applyDailyLimits({
-    dueCards: cardsToReview,
+    dueCards: prioritizedCards,
     decks,
     globalLimit: settings?.daily_limit ?? null,
-    reviewedTodayDeckIds,
+    globalNewLimit: settings?.daily_new_limit ?? null,
+    reviewedToday,
   });
 
   // Keep the enriched card objects (rootDeckName etc.) that the session needs.
   const allowedIds = new Set(limitedCards.map((c) => c.id));
-  const queue = cardsToReview.filter((c) => allowedIds.has(c.id));
+  const queue = prioritizedCards.filter((c) => allowedIds.has(c.id));
 
   const reviewCount = queue.length;
   const [showSession, setShowSession] = useState(false);

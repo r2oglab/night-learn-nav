@@ -148,6 +148,8 @@ export type Database = {
           user_id: string;
           sort_order: number | null;
           pinned: boolean;
+          exam_date: string | null;
+          daily_new_limit: number | null;
         };
         Insert: {
           created_at?: string;
@@ -158,6 +160,8 @@ export type Database = {
           user_id: string;
           sort_order?: number | null;
           pinned?: boolean;
+          exam_date?: string | null;
+          daily_new_limit?: number | null;
         };
         Update: {
           created_at?: string;
@@ -168,6 +172,8 @@ export type Database = {
           user_id?: string;
           sort_order?: number | null;
           pinned?: boolean;
+          exam_date?: string | null;
+          daily_new_limit?: number | null;
         };
         Relationships: [
           {
@@ -189,6 +195,7 @@ export type Database = {
           avatar_url: string | null;
           streak: number;
           daily_limit: number | null;
+          daily_new_limit: number | null;
           user_id: string;
         };
         Insert: {
@@ -200,6 +207,7 @@ export type Database = {
           avatar_url?: string | null;
           streak?: number;
           daily_limit?: number | null;
+          daily_new_limit?: number | null;
           user_id: string;
         };
         Update: {
@@ -211,6 +219,7 @@ export type Database = {
           avatar_url?: string | null;
           streak?: number;
           daily_limit?: number | null;
+          daily_new_limit?: number | null;
           user_id?: string;
         };
         Relationships: [];

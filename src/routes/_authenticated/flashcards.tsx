@@ -308,11 +308,18 @@ function FlashcardsPage() {
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
   const [editingDeckName, setEditingDeckName] = useState("");
   const [editingDeckLimit, setEditingDeckLimit] = useState("");
+  const [editingDeckNewLimit, setEditingDeckNewLimit] = useState("");
+  const [editingDeckExamDate, setEditingDeckExamDate] = useState("");
 
   const updateDeckServer = useServerFn(updateDeck);
   const updateDeckMutation = useMutation({
-    mutationFn: (vars: { id: string; name: string; daily_limit?: number | null }) =>
-      updateDeckServer({ data: vars }),
+    mutationFn: (vars: {
+      id: string;
+      name: string;
+      daily_limit?: number | null;
+      daily_new_limit?: number | null;
+      exam_date?: string | null;
+    }) => updateDeckServer({ data: vars }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       setEditingDeckId(null);
@@ -826,7 +833,7 @@ function FlashcardsPage() {
                   onChange={(e) => setEditingDeckName(e.target.value)}
                 />
               </label>
-              <label className="flex w-36 flex-col gap-1 text-xs text-muted-foreground">
+              <label className="flex w-32 flex-col gap-1 text-xs text-muted-foreground">
                 Limite/dia
                 <Input
                   type="number"
@@ -834,6 +841,24 @@ function FlashcardsPage() {
                   value={editingDeckLimit}
                   onChange={(e) => setEditingDeckLimit(e.target.value)}
                   placeholder="Sem limite"
+                />
+              </label>
+              <label className="flex w-32 flex-col gap-1 text-xs text-muted-foreground">
+                Novos/dia
+                <Input
+                  type="number"
+                  min={0}
+                  value={editingDeckNewLimit}
+                  onChange={(e) => setEditingDeckNewLimit(e.target.value)}
+                  placeholder="Sem limite"
+                />
+              </label>
+              <label className="flex w-40 flex-col gap-1 text-xs text-muted-foreground">
+                Data da prova
+                <Input
+                  type="date"
+                  value={editingDeckExamDate}
+                  onChange={(e) => setEditingDeckExamDate(e.target.value)}
                 />
               </label>
               <div className="flex gap-2">
@@ -844,6 +869,9 @@ function FlashcardsPage() {
                       id: deck.id,
                       name: editingDeckName,
                       daily_limit: editingDeckLimit.trim() === "" ? null : Number(editingDeckLimit),
+                      daily_new_limit:
+                        editingDeckNewLimit.trim() === "" ? null : Number(editingDeckNewLimit),
+                      exam_date: editingDeckExamDate.trim() === "" ? null : editingDeckExamDate,
                     })
                   }
                 >
@@ -867,6 +895,31 @@ function FlashcardsPage() {
                   limite {deck.daily_limit}/dia
                 </span>
               )}
+              {deck.exam_date &&
+                (() => {
+                  const diffDays = Math.ceil(
+                    (new Date(`${deck.exam_date}T00:00:00`).getTime() - Date.now()) /
+                      (1000 * 60 * 60 * 24),
+                  );
+                  const label =
+                    diffDays < 0
+                      ? "prova passou"
+                      : diffDays === 0
+                        ? "prova hoje"
+                        : `prova em ${diffDays}d`;
+                  return (
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[10px]",
+                        diffDays <= 3 && diffDays >= 0
+                          ? "bg-destructive/15 text-destructive"
+                          : "bg-amber-500/15 text-amber-500",
+                      )}
+                    >
+                      {label}
+                    </span>
+                  );
+                })()}
               <div className="ml-auto flex shrink-0 items-center gap-0.5">
                 <Button
                   size="icon"
@@ -930,6 +983,10 @@ function FlashcardsPage() {
                     setEditingDeckId(deck.id);
                     setEditingDeckName(deck.name);
                     setEditingDeckLimit(deck.daily_limit != null ? String(deck.daily_limit) : "");
+                    setEditingDeckNewLimit(
+                      deck.daily_new_limit != null ? String(deck.daily_new_limit) : "",
+                    );
+                    setEditingDeckExamDate(deck.exam_date ?? "");
                   }}
                 >
                   <Pencil className="size-3.5" />

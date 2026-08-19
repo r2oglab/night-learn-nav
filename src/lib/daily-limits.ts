@@ -1,7 +1,8 @@
 /**
  * Deciding which due cards actually enter today's queue.
  *
- * Two kinds of cap interact:
+ * Two kinds of cap interact, each with a "total" and a "new cards only"
+ * variant:
  *  - a deck's own limit, which applies to that deck *and its whole subtree*
  *  - one global limit, a ceiling on the day's total across every deck
  *
@@ -9,9 +10,14 @@
  * reopening the app would hand out a fresh allowance each time.
  */
 
-export type LimitDeck = { id: string; parent_id?: string | null; daily_limit?: number | null };
+export type LimitDeck = {
+  id: string;
+  parent_id?: string | null;
+  daily_limit?: number | null;
+  daily_new_limit?: number | null;
+};
 
-export type LimitCard = { id: string; deck_id: string };
+export type LimitCard = { id: string; deck_id: string; isNew: boolean };
 
 /** Deck id → its own id plus every ancestor, nearest first. */
 export function buildAncestorChains(decks: LimitDeck[]): Map<string, string[]> {
@@ -40,32 +46,43 @@ export function applyDailyLimits(params: {
   decks: LimitDeck[];
   /** Global ceiling for the day, or null for unlimited. */
   globalLimit?: number | null;
+  /** Global ceiling on new cards specifically, or null for unlimited. */
+  globalNewLimit?: number | null;
   /** Cards already reviewed today, used to consume the allowance. */
-  reviewedTodayDeckIds?: string[];
+  reviewedToday?: { deck_id: string; isNew: boolean }[];
 }): { allowed: LimitCard[]; blocked: number } {
-  const { dueCards, decks, globalLimit, reviewedTodayDeckIds = [] } = params;
+  const { dueCards, decks, globalLimit, globalNewLimit, reviewedToday = [] } = params;
 
   const chains = buildAncestorChains(decks);
   const limitOf = new Map<string, number | null>();
+  const newLimitOf = new Map<string, number | null>();
   for (const d of decks) {
     limitOf.set(
       d.id,
       typeof d.daily_limit === "number" && d.daily_limit >= 0 ? d.daily_limit : null,
     );
+    newLimitOf.set(
+      d.id,
+      typeof d.daily_new_limit === "number" && d.daily_new_limit >= 0 ? d.daily_new_limit : null,
+    );
   }
 
   const used = new Map<string, number>();
+  const usedNew = new Map<string, number>();
   let usedGlobal = 0;
+  let usedGlobalNew = 0;
 
-  const consume = (deckId: string) => {
+  const consume = (deckId: string, isNew: boolean) => {
     for (const ancestor of chains.get(deckId) ?? [deckId]) {
       used.set(ancestor, (used.get(ancestor) ?? 0) + 1);
+      if (isNew) usedNew.set(ancestor, (usedNew.get(ancestor) ?? 0) + 1);
     }
     usedGlobal += 1;
+    if (isNew) usedGlobalNew += 1;
   };
 
   // Today's reviews eat into the same allowance.
-  for (const deckId of reviewedTodayDeckIds) consume(deckId);
+  for (const r of reviewedToday) consume(r.deck_id, r.isNew);
 
   const allowed: LimitCard[] = [];
   let blocked = 0;
@@ -76,11 +93,20 @@ export function applyDailyLimits(params: {
       blocked += dueCards.length - (allowed.length + blocked);
       break;
     }
+    if (card.isNew && globalNewLimit != null && usedGlobalNew >= globalNewLimit) {
+      blocked += 1;
+      continue;
+    }
 
     const chain = chains.get(card.deck_id) ?? [card.deck_id];
     const capped = chain.some((deckId) => {
       const limit = limitOf.get(deckId);
-      return limit != null && (used.get(deckId) ?? 0) >= limit;
+      if (limit != null && (used.get(deckId) ?? 0) >= limit) return true;
+      if (card.isNew) {
+        const newLimit = newLimitOf.get(deckId);
+        if (newLimit != null && (usedNew.get(deckId) ?? 0) >= newLimit) return true;
+      }
+      return false;
     });
 
     if (capped) {
@@ -88,7 +114,7 @@ export function applyDailyLimits(params: {
       continue;
     }
 
-    consume(card.deck_id);
+    consume(card.deck_id, card.isNew);
     allowed.push(card);
   }
 

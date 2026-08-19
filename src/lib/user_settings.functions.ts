@@ -8,7 +8,7 @@ export const getUserSettings = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("user_settings")
       .select(
-        "user_id,daily_goal,desired_retention,last_review_date,streak,display_name,avatar_url,daily_limit",
+        "user_id,daily_goal,desired_retention,last_review_date,streak,display_name,avatar_url,daily_limit,daily_new_limit",
       )
       .eq("user_id", context.userId)
       .maybeSingle();
@@ -23,6 +23,7 @@ export const getUserSettings = createServerFn({ method: "GET" })
         display_name: null as string | null,
         avatar_url: null as string | null,
         daily_limit: null as number | null,
+        daily_new_limit: null as number | null,
       };
     }
     return data;
@@ -36,6 +37,7 @@ export const upsertUserSettings = createServerFn({ method: "POST" })
       desired_retention?: number;
       streak?: number;
       daily_limit?: number | null;
+      daily_new_limit?: number | null;
       display_name?: string;
       avatar_url?: string;
     }) => {
@@ -49,6 +51,9 @@ export const upsertUserSettings = createServerFn({ method: "POST" })
       if (input.daily_limit === null) out.daily_limit = null;
       else if (typeof input.daily_limit === "number")
         out.daily_limit = Math.max(0, Math.floor(input.daily_limit));
+      if (input.daily_new_limit === null) out.daily_new_limit = null;
+      else if (typeof input.daily_new_limit === "number")
+        out.daily_new_limit = Math.max(0, Math.floor(input.daily_new_limit));
       if (typeof input.display_name === "string")
         out.display_name = input.display_name.trim() || null;
       if (typeof input.avatar_url === "string") out.avatar_url = input.avatar_url.trim() || null;
@@ -60,6 +65,7 @@ export const upsertUserSettings = createServerFn({ method: "POST" })
     if (data.daily_goal !== undefined) payload.daily_goal = data.daily_goal;
     if (data.desired_retention !== undefined) payload.desired_retention = data.desired_retention;
     if (data.daily_limit !== undefined) payload.daily_limit = data.daily_limit;
+    if (data.daily_new_limit !== undefined) payload.daily_new_limit = data.daily_new_limit;
     if (data.display_name !== undefined) payload.display_name = data.display_name;
     if (data.avatar_url !== undefined) payload.avatar_url = data.avatar_url;
     if (data.streak !== undefined) payload.streak = data.streak;

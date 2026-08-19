@@ -9,7 +9,9 @@ export const listDecks = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("decks")
-      .select("id,user_id,name,parent_id,created_at,daily_limit,sort_order,pinned")
+      .select(
+        "id,user_id,name,parent_id,created_at,daily_limit,sort_order,pinned,exam_date,daily_new_limit",
+      )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []) as DeckRow[];
@@ -165,31 +167,58 @@ export const reorderDecks = createServerFn({ method: "POST" })
 
 export const updateDeck = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { id: string; name: string; daily_limit?: number | null }) => {
-    const id = input.id?.trim();
-    const name = input.name?.trim();
-    if (!id) throw new Error("ID do deck inválido.");
-    if (!name) throw new Error("Informe o nome do deck.");
-    if (name.length > 80) throw new Error("Nome muito longo.");
-    // undefined = leave as is · null = clear the limit · number = set it
-    let dailyLimit: number | null | undefined;
-    if (input.daily_limit === null) dailyLimit = null;
-    else if (typeof input.daily_limit === "number") {
-      if (!Number.isFinite(input.daily_limit) || input.daily_limit < 0)
-        throw new Error("Limite diário inválido.");
-      dailyLimit = Math.floor(input.daily_limit);
-    }
-    return { id, name, daily_limit: dailyLimit };
-  })
+  .inputValidator(
+    (input: {
+      id: string;
+      name: string;
+      daily_limit?: number | null;
+      daily_new_limit?: number | null;
+      exam_date?: string | null;
+    }) => {
+      const id = input.id?.trim();
+      const name = input.name?.trim();
+      if (!id) throw new Error("ID do deck inválido.");
+      if (!name) throw new Error("Informe o nome do deck.");
+      if (name.length > 80) throw new Error("Nome muito longo.");
+      // undefined = leave as is · null = clear the limit · number = set it
+      function parseLimit(value: number | null | undefined): number | null | undefined {
+        if (value === null) return null;
+        if (typeof value !== "number") return undefined;
+        if (!Number.isFinite(value) || value < 0) throw new Error("Limite diário inválido.");
+        return Math.floor(value);
+      }
+      const dailyLimit = parseLimit(input.daily_limit);
+      const dailyNewLimit = parseLimit(input.daily_new_limit);
+      let examDate: string | null | undefined;
+      if (input.exam_date === null) examDate = null;
+      else if (typeof input.exam_date === "string" && input.exam_date.trim()) {
+        examDate = input.exam_date.trim();
+      }
+      return {
+        id,
+        name,
+        daily_limit: dailyLimit,
+        daily_new_limit: dailyNewLimit,
+        exam_date: examDate,
+      };
+    },
+  )
   .handler(async ({ data, context }) => {
+    const patch: {
+      name: string;
+      daily_limit?: number | null;
+      daily_new_limit?: number | null;
+      exam_date?: string | null;
+    } = { name: data.name };
+    if (data.daily_limit !== undefined) patch.daily_limit = data.daily_limit;
+    if (data.daily_new_limit !== undefined) patch.daily_new_limit = data.daily_new_limit;
+    if (data.exam_date !== undefined) patch.exam_date = data.exam_date;
+
     const { data: row, error } = await context.supabase
       .from("decks")
-      .update(
-        data.daily_limit === undefined
-          ? { name: data.name }
-          : { name: data.name, daily_limit: data.daily_limit },
-      )
+      .update(patch)
       .eq("id", data.id)
+      .eq("user_id", context.userId)
       .select("*")
       .single();
     if (error) throw new Error(error.message);

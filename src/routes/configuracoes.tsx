@@ -25,6 +25,7 @@ function Configuracoes() {
   const [displayName, setDisplayName] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [dailyLimitInput, setDailyLimitInput] = useState("");
+  const [dailyNewLimitInput, setDailyNewLimitInput] = useState("");
   const [dailyGoalInput, setDailyGoalInput] = useState("20");
 
   const qc = useQueryClient();
@@ -56,6 +57,12 @@ function Configuracoes() {
   useEffect(() => {
     setDailyLimitInput(settings?.daily_limit != null ? String(settings.daily_limit) : "");
   }, [settings?.daily_limit]);
+
+  useEffect(() => {
+    setDailyNewLimitInput(
+      settings?.daily_new_limit != null ? String(settings.daily_new_limit) : "",
+    );
+  }, [settings?.daily_new_limit]);
 
   useEffect(() => {
     setDailyGoalInput(String(settings?.daily_goal ?? 20));
@@ -245,6 +252,35 @@ function Configuracoes() {
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Teto de revisões do dia somando todos os decks. Deixe vazio para não limitar.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <div className="text-sm text-muted-foreground">Limite de cards novos/dia</div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={dailyNewLimitInput}
+                        onChange={(e) => setDailyNewLimitInput(e.target.value)}
+                        placeholder="Sem limite"
+                        className="w-32"
+                      />
+                      <Button
+                        onClick={() =>
+                          upsertMutation.mutate({
+                            daily_new_limit:
+                              dailyNewLimitInput.trim() === "" ? null : Number(dailyNewLimitInput),
+                          })
+                        }
+                        disabled={upsertMutation.isPending}
+                      >
+                        Salvar limite
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Teto separado só pra cards que você nunca viu — dentro do limite diário total
+                      acima, não além dele.
                     </p>
                   </div>
 
