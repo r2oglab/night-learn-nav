@@ -196,6 +196,7 @@ export type Database = {
           streak: number;
           daily_limit: number | null;
           daily_new_limit: number | null;
+          ui_scale: number | null;
           user_id: string;
         };
         Insert: {
@@ -208,6 +209,7 @@ export type Database = {
           streak?: number;
           daily_limit?: number | null;
           daily_new_limit?: number | null;
+          ui_scale?: number | null;
           user_id: string;
         };
         Update: {
@@ -220,6 +222,7 @@ export type Database = {
           streak?: number;
           daily_limit?: number | null;
           daily_new_limit?: number | null;
+          ui_scale?: number | null;
           user_id?: string;
         };
         Relationships: [];

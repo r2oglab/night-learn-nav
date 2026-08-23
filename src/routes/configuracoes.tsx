@@ -300,6 +300,35 @@ function Configuracoes() {
                     />
                   </div>
 
+                  <div className="grid gap-2 border-t border-border pt-4">
+                    <div className="text-sm text-muted-foreground">Escala da interface</div>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          { label: "Compacto", value: 90 },
+                          { label: "Padrão", value: null },
+                          { label: "Confortável", value: 110 },
+                          { label: "Grande", value: 125 },
+                        ] as const
+                      ).map((opt) => (
+                        <Button
+                          key={opt.label}
+                          size="sm"
+                          variant={
+                            (settings?.ui_scale ?? null) === opt.value ? "default" : "outline"
+                          }
+                          disabled={upsertMutation.isPending}
+                          onClick={() => upsertMutation.mutate({ ui_scale: opt.value })}
+                        >
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Ajusta texto e espaçamento em todo o app de uma vez.
+                    </p>
+                  </div>
+
                   <div className="grid gap-2">
                     <Button onClick={() => void exportCsv()}>Exportar meus dados (CSV)</Button>
                   </div>
