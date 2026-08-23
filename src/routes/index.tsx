@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { capitalizeFirst, cn } from "@/lib/utils";
 import { listDecks } from "@/lib/decks.functions";
 import { getHeatmapData } from "@/lib/cards.functions";
+import { getTodayFocus } from "@/lib/dashboard.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -84,6 +85,12 @@ function Index() {
   const { data: allDecks = [], isLoading: decksLoading } = useQuery({
     queryKey: ["decks"],
     queryFn: () => fetchDecks(),
+  });
+
+  const fetchTodayFocus = useServerFn(getTodayFocus);
+  const { data: todayFocus } = useQuery({
+    queryKey: ["todayFocus"],
+    queryFn: () => fetchTodayFocus({ data: { tz_offset_minutes: new Date().getTimezoneOffset() } }),
   });
 
   const fetchHeatmapData = useServerFn(getHeatmapData);
@@ -336,6 +343,49 @@ function Index() {
 
             <main className="flex flex-1 justify-center p-3 sm:p-6">
               <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
+                {todayFocus && (todayFocus.dueCount > 0 || todayFocus.leechCount > 0) && (
+                  <div className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
+                    <h2 className="mb-2 text-sm font-medium text-muted-foreground">Foco de hoje</h2>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {todayFocus.dueCount > 0 && (
+                        <p className="text-base">
+                          <span className="font-semibold">{todayFocus.dueCount}</span> card(s)
+                          pendente(s)
+                          {todayFocus.nearestExam && (
+                            <>
+                              {" — foque em "}
+                              <span className="font-semibold">
+                                {todayFocus.nearestExam.deckName}
+                              </span>
+                              {" ("}
+                              {todayFocus.nearestExam.dueCount} pendente(s), prova em{" "}
+                              {Math.max(
+                                0,
+                                Math.ceil(
+                                  (new Date(
+                                    `${todayFocus.nearestExam.examDate}T00:00:00`,
+                                  ).getTime() -
+                                    Date.now()) /
+                                    (1000 * 60 * 60 * 24),
+                                ),
+                              )}
+                              d)
+                            </>
+                          )}
+                        </p>
+                      )}
+                      {todayFocus.leechCount > 0 && (
+                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
+                          {todayFocus.leechCount} leech(es) na fila
+                        </span>
+                      )}
+                      <Link to="/revisoes" className="ml-auto">
+                        <Button size="sm">Estudar agora</Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mb-4 flex items-center gap-3">
                   <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
                   {isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
