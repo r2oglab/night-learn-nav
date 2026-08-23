@@ -197,6 +197,8 @@ export type Database = {
           daily_limit: number | null;
           daily_new_limit: number | null;
           ui_scale: number | null;
+          theme: string | null;
+          accent_hue: number | null;
           user_id: string;
         };
         Insert: {
@@ -210,6 +212,8 @@ export type Database = {
           daily_limit?: number | null;
           daily_new_limit?: number | null;
           ui_scale?: number | null;
+          theme?: string | null;
+          accent_hue?: number | null;
           user_id: string;
         };
         Update: {
@@ -223,6 +227,8 @@ export type Database = {
           daily_limit?: number | null;
           daily_new_limit?: number | null;
           ui_scale?: number | null;
+          theme?: string | null;
+          accent_hue?: number | null;
           user_id?: string;
         };
         Relationships: [];

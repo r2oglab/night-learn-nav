@@ -10,6 +10,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { getUserSettings, upsertUserSettings } from "@/lib/user_settings.functions";
+import { ACCENT_PRESETS } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 import { listCards } from "@/lib/cards.functions";
 import { listDecks } from "@/lib/decks.functions";
 import { toast } from "sonner";
@@ -327,6 +329,52 @@ function Configuracoes() {
                     <p className="text-xs text-muted-foreground">
                       Ajusta texto e espaçamento em todo o app de uma vez.
                     </p>
+                  </div>
+
+                  <div className="grid gap-2 border-t border-border pt-4">
+                    <div className="text-sm text-muted-foreground">Tema</div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant={(settings?.theme ?? "dark") === "dark" ? "default" : "outline"}
+                        disabled={upsertMutation.isPending}
+                        onClick={() => upsertMutation.mutate({ theme: null })}
+                      >
+                        Escuro
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={settings?.theme === "light" ? "default" : "outline"}
+                        disabled={upsertMutation.isPending}
+                        onClick={() => upsertMutation.mutate({ theme: "light" })}
+                      >
+                        Claro
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <div className="text-sm text-muted-foreground">Cor de destaque</div>
+                    <div className="flex flex-wrap gap-2">
+                      {ACCENT_PRESETS.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          title={preset.label}
+                          disabled={upsertMutation.isPending}
+                          onClick={() => upsertMutation.mutate({ accent_hue: preset.hue })}
+                          className={cn(
+                            "size-8 rounded-full border-2 transition-transform hover:scale-105",
+                            (settings?.accent_hue ?? 168) === preset.hue
+                              ? "border-foreground"
+                              : "border-transparent",
+                          )}
+                          style={{ backgroundColor: `oklch(0.7 0.15 ${preset.hue})` }}
+                        >
+                          <span className="sr-only">{preset.label}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid gap-2">

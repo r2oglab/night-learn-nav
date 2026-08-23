@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 
 import { supabase } from "@/integrations/supabase/client";
 import { getUserSettings } from "@/lib/user_settings.functions";
+import { applyTheme } from "@/lib/theme";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -30,6 +31,10 @@ function RootLayout() {
   useEffect(() => {
     document.documentElement.style.fontSize = settings?.ui_scale ? `${settings.ui_scale}%` : "";
   }, [settings?.ui_scale]);
+
+  useEffect(() => {
+    applyTheme(settings?.theme, settings?.accent_hue);
+  }, [settings?.theme, settings?.accent_hue]);
 
   return <Outlet />;
 }
