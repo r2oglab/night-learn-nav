@@ -81,9 +81,15 @@ export function buildCardsCsv(
 }
 
 /** Trigger a browser download for text content. */
-export function downloadTextFile(filename: string, content: string) {
-  // The BOM makes Excel open UTF-8 correctly instead of mangling accents.
-  const blob = new Blob(["\ufeff" + content], { type: "text/csv;charset=utf-8;" });
+export function downloadTextFile(
+  filename: string,
+  content: string,
+  mimeType = "text/csv;charset=utf-8;",
+) {
+  // The BOM makes Excel open UTF-8 CSV correctly instead of mangling
+  // accents — only relevant for CSV, so skip it for other formats.
+  const withBom = mimeType.startsWith("text/csv") ? "\ufeff" + content : content;
+  const blob = new Blob([withBom], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

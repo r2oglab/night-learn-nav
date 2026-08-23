@@ -14,6 +14,8 @@ import { ACCENT_PRESETS } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { listCards } from "@/lib/cards.functions";
 import { listDecks } from "@/lib/decks.functions";
+import { exportFullBackup } from "@/lib/backup.functions";
+import { downloadTextFile } from "@/lib/csv-export";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -116,6 +118,27 @@ function Configuracoes() {
       toast.success("CSV gerado");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const fetchBackup = useServerFn(exportFullBackup);
+  const [backingUp, setBackingUp] = useState(false);
+  const exportBackup = async () => {
+    setBackingUp(true);
+    try {
+      const backup = await fetchBackup();
+      downloadTextFile(
+        `medreview_backup_${new Date().toISOString().slice(0, 10)}.json`,
+        JSON.stringify(backup, null, 2),
+        "application/json;charset=utf-8;",
+      );
+      toast.success(
+        `Backup gerado: ${backup.decks.length} deck(s), ${backup.cards.length} card(s)`,
+      );
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBackingUp(false);
     }
   };
 
@@ -378,7 +401,21 @@ function Configuracoes() {
                   </div>
 
                   <div className="grid gap-2">
-                    <Button onClick={() => void exportCsv()}>Exportar meus dados (CSV)</Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={() => void exportCsv()}>Exportar meus dados (CSV)</Button>
+                      <Button
+                        variant="outline"
+                        disabled={backingUp}
+                        onClick={() => void exportBackup()}
+                      >
+                        {backingUp ? "Gerando..." : "Backup completo (JSON)"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      O CSV só tem pergunta/resposta/deck. O backup JSON leva tudo — estado do FSRS,
+                      tags, notas, imagens de oclusão — mas ainda não tem um "restaurar" automático
+                      no app; serve de rede de segurança fora do Supabase.
+                    </p>
                   </div>
                 </div>
               </section>
