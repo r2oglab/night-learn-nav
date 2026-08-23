@@ -36,6 +36,7 @@ export type Database = {
           explanation: string | null;
           tags: string[];
           deleted_at: string | null;
+          note: string | null;
         };
         Insert: {
           created_at?: string;
@@ -64,6 +65,7 @@ export type Database = {
           explanation?: string | null;
           tags?: string[];
           deleted_at?: string | null;
+          note?: string | null;
         };
         Update: {
           created_at?: string;
@@ -92,6 +94,7 @@ export type Database = {
           explanation?: string | null;
           tags?: string[];
           deleted_at?: string | null;
+          note?: string | null;
         };
         Relationships: [
           {

@@ -45,6 +45,7 @@ import {
   deleteCard,
   updateCard,
   updateCardTags,
+  updateCardNote,
   updateImageOcclusion,
   postponeCard,
   setCardSuspended,
@@ -384,6 +385,18 @@ function FlashcardsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const updateNoteServer = useServerFn(updateCardNote);
+  const updateNoteMutation = useMutation({
+    mutationFn: (vars: { id: string; note: string }) => updateNoteServer({ data: vars }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success("Nota salva");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteDraft, setEditingNoteDraft] = useState("");
+
   // Build maps for tree
   const deckById = Object.fromEntries(decks.map((t: any) => [t.id, t]));
   const childrenMap: Record<string, any[]> = {};
@@ -644,6 +657,29 @@ function FlashcardsPage() {
                   >
                     {editingTagsId === card.id ? "fechar" : "+ tag"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editingNoteId === card.id) {
+                        setEditingNoteId(null);
+                      } else {
+                        setEditingNoteId(card.id);
+                        setEditingNoteDraft(card.note ?? "");
+                      }
+                    }}
+                    className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  >
+                    {editingNoteId === card.id
+                      ? "fechar nota"
+                      : card.note
+                        ? "editar nota"
+                        : "+ nota"}
+                  </button>
+                  {card.note && editingNoteId !== card.id && (
+                    <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-500">
+                      tem nota
+                    </span>
+                  )}
                 </div>
                 {editingTagsId === card.id && (
                   <div className="mb-2 max-w-xs">
@@ -651,6 +687,32 @@ function FlashcardsPage() {
                       tags={(card.tags ?? []) as string[]}
                       onChange={(next) => updateTagsMutation.mutate({ id: card.id, tags: next })}
                     />
+                  </div>
+                )}
+                {editingNoteId === card.id && (
+                  <div className="mb-2 flex max-w-sm flex-col gap-1.5">
+                    <textarea
+                      value={editingNoteDraft}
+                      onChange={(e) => setEditingNoteDraft(e.target.value)}
+                      placeholder="Mnemônico, lembrete... só você vê isso, nunca aparece na revisão"
+                      rows={3}
+                      className="w-full rounded-md border border-border bg-background p-2 text-sm outline-none focus:border-primary"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={updateNoteMutation.isPending}
+                        onClick={() => {
+                          updateNoteMutation.mutate({ id: card.id, note: editingNoteDraft });
+                          setEditingNoteId(null);
+                        }}
+                      >
+                        Salvar nota
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingNoteId(null)}>
+                        Cancelar
+                      </Button>
+                    </div>
                   </div>
                 )}
                 {isClozeText(card.pergunta) ? (

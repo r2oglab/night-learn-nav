@@ -490,6 +490,27 @@ export const updateCardTags = createServerFn({ method: "POST" })
     return updated;
   });
 
+/** Personal note per card — a mnemonic or reminder, never shown during
+ * review, editable independently of pergunta/resposta/tags. */
+export const updateCardNote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; note: string }) => {
+    if (!input.id?.trim()) throw new Error("ID do card inválido.");
+    const note = (input.note ?? "").trim();
+    return { id: input.id, note: note || null };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: updated, error } = await context.supabase
+      .from("cards")
+      .update({ note: data.note })
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return updated;
+  });
+
 type OcclusionRegion = {
   id: string;
   x: number;
@@ -556,13 +577,16 @@ export const importCards = createServerFn({ method: "POST" })
     (input: {
       cards: { deckPath: string; pergunta: string; resposta: string }[];
       tz_offset_minutes: number;
+      tags?: string[];
     }) => {
       if (!input.cards || input.cards.length === 0) throw new Error("Nenhum card para importar.");
       if (input.cards.length > 5000)
         throw new Error("Importação limitada a 5000 cards por vez. Divida o arquivo.");
+      const tags = Array.from(new Set((input.tags ?? []).map((t) => t.trim()).filter(Boolean)));
       return {
         cards: input.cards,
         tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
+        tags,
       };
     },
   )
@@ -627,6 +651,7 @@ export const importCards = createServerFn({ method: "POST" })
         deck_id: deckId,
         pergunta: card.pergunta,
         resposta: card.resposta,
+        tags: data.tags,
         ...newCardFields(data.tz_offset_minutes),
       });
     }
