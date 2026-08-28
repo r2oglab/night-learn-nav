@@ -202,6 +202,7 @@ export type Database = {
           ui_scale: number | null;
           theme: string | null;
           accent_hue: number | null;
+          hidden_widgets: string[];
           user_id: string;
         };
         Insert: {
@@ -217,6 +218,7 @@ export type Database = {
           ui_scale?: number | null;
           theme?: string | null;
           accent_hue?: number | null;
+          hidden_widgets?: string[];
           user_id: string;
         };
         Update: {
@@ -232,6 +234,7 @@ export type Database = {
           ui_scale?: number | null;
           theme?: string | null;
           accent_hue?: number | null;
+          hidden_widgets?: string[];
           user_id?: string;
         };
         Relationships: [];
@@ -316,6 +319,45 @@ export type Database = {
           {
             foreignKeyName: "card_edit_logs_card_id_fkey";
             columns: ["card_id"];
+            isOneToOne: false;
+            referencedRelation: "cards";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      card_links: {
+        Row: {
+          id: string;
+          user_id: string;
+          card_a_id: string;
+          card_b_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          card_a_id: string;
+          card_b_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          card_a_id?: string;
+          card_b_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "card_links_card_a_id_fkey";
+            columns: ["card_a_id"];
+            isOneToOne: false;
+            referencedRelation: "cards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "card_links_card_b_id_fkey";
+            columns: ["card_b_id"];
             isOneToOne: false;
             referencedRelation: "cards";
             referencedColumns: ["id"];

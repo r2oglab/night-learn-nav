@@ -63,6 +63,11 @@ import {
   restoreCard,
   permanentlyDeleteCard,
   listCardEditLogs,
+  linkCards,
+  unlinkCards,
+  listCardLinks,
+  previewFindReplace,
+  applyFindReplace,
 } from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -412,6 +417,56 @@ function FlashcardsPage() {
     enabled: !!viewingHistoryId,
   });
 
+  const [editingLinksId, setEditingLinksId] = useState<string | null>(null);
+  const [linkSearch, setLinkSearch] = useState("");
+  const fetchCardLinks = useServerFn(listCardLinks);
+  const { data: cardLinks = [] } = useQuery({
+    queryKey: ["cardLinks", editingLinksId],
+    queryFn: () => fetchCardLinks({ data: { card_id: editingLinksId as string } }),
+    enabled: !!editingLinksId,
+  });
+  const linkServer = useServerFn(linkCards);
+  const linkMutation = useMutation({
+    mutationFn: (vars: { card_id_a: string; card_id_b: string }) => linkServer({ data: vars }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["cardLinks"] });
+      setLinkSearch("");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+  const unlinkServer = useServerFn(unlinkCards);
+  const unlinkMutation = useMutation({
+    mutationFn: (vars: { card_id_a: string; card_id_b: string }) => unlinkServer({ data: vars }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["cardLinks"] }),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Busca e substituição em lote — painel próprio, fora da árvore/lentes de
+  // filtro (leech/tag/busca), já que opera sobre todos os cards de uma vez.
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [frFind, setFrFind] = useState("");
+  const [frReplace, setFrReplace] = useState("");
+  const [frCaseSensitive, setFrCaseSensitive] = useState(false);
+  const previewFrServer = useServerFn(previewFindReplace);
+  const previewFrMutation = useMutation({
+    mutationFn: (vars: { find: string; case_sensitive: boolean }) =>
+      previewFrServer({ data: vars }),
+    onError: (err: Error) => toast.error(err.message),
+  });
+  const applyFrServer = useServerFn(applyFindReplace);
+  const applyFrMutation = useMutation({
+    mutationFn: (vars: { find: string; replace: string; case_sensitive: boolean }) =>
+      applyFrServer({ data: vars }),
+    onSuccess: (res) => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success(`${res.count} card(s) atualizado(s)`);
+      previewFrMutation.reset();
+      setFrFind("");
+      setFrReplace("");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   // Build maps for tree
   const deckById = Object.fromEntries(decks.map((t: any) => [t.id, t]));
   const childrenMap: Record<string, any[]> = {};
@@ -743,6 +798,16 @@ function FlashcardsPage() {
                   >
                     {viewingHistoryId === card.id ? "fechar histórico" : "histórico"}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingLinksId(editingLinksId === card.id ? null : card.id);
+                      setLinkSearch("");
+                    }}
+                    className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  >
+                    {editingLinksId === card.id ? "fechar relacionados" : "relacionados"}
+                  </button>
                 </div>
                 {editingTagsId === card.id && (
                   <div className="mb-2 max-w-xs">
@@ -750,6 +815,73 @@ function FlashcardsPage() {
                       tags={(card.tags ?? []) as string[]}
                       onChange={(next) => updateTagsMutation.mutate({ id: card.id, tags: next })}
                     />
+                  </div>
+                )}
+                {editingLinksId === card.id && (
+                  <div className="mb-2 max-w-sm rounded-md border border-border bg-muted/20 p-2 text-xs">
+                    {cardLinks.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {cardLinks.map((linked) => (
+                          <span
+                            key={linked.id}
+                            className="flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-violet-400"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const full = cards.find((c) => c.id === linked.id);
+                                setPreviewCard(full ?? linked);
+                              }}
+                              className="max-w-[160px] truncate hover:underline"
+                              title={linked.pergunta}
+                            >
+                              {linked.pergunta}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                unlinkMutation.mutate({ card_id_a: card.id, card_id_b: linked.id })
+                              }
+                              className="hover:text-foreground"
+                            >
+                              <X className="size-3" />
+                              <span className="sr-only">Desvincular</span>
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <Input
+                      value={linkSearch}
+                      onChange={(e) => setLinkSearch(e.target.value)}
+                      placeholder="Buscar card pra relacionar..."
+                      className="h-7 text-xs"
+                    />
+                    {linkSearch.trim().length >= 2 && (
+                      <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto">
+                        {cards
+                          .filter(
+                            (c) =>
+                              c.id !== card.id &&
+                              !cardLinks.some((l) => l.id === c.id) &&
+                              c.pergunta.toLowerCase().includes(linkSearch.trim().toLowerCase()),
+                          )
+                          .slice(0, 5)
+                          .map((c) => (
+                            <li key={c.id}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  linkMutation.mutate({ card_id_a: card.id, card_id_b: c.id })
+                                }
+                                className="w-full truncate rounded px-1.5 py-1 text-left hover:bg-muted"
+                              >
+                                {c.pergunta}
+                              </button>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
                   </div>
                 )}
                 {viewingHistoryId === card.id && (
@@ -1136,7 +1268,7 @@ function FlashcardsPage() {
                   size="icon"
                   variant="ghost"
                   className="size-7"
-                  title="Exportar deck (CSV)"
+                  title="Exportar deck (CSV) — pra compartilhar com o grupo ou fazer backup"
                   onClick={() => exportDeck(deck)}
                 >
                   <Download className="size-3.5" />
@@ -1276,7 +1408,91 @@ function FlashcardsPage() {
                 >
                   {showTrash ? "Voltar" : "Lixeira"}
                 </Button>
+                <Button
+                  size="sm"
+                  variant={showFindReplace ? "default" : "outline"}
+                  onClick={() => setShowFindReplace((v) => !v)}
+                >
+                  {showFindReplace ? "Fechar busca/substituição" : "Buscar e substituir"}
+                </Button>
               </div>
+              {showFindReplace && (
+                <div className="mb-3 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Input
+                      value={frFind}
+                      onChange={(e) => setFrFind(e.target.value)}
+                      placeholder="Buscar..."
+                      className="h-8 max-w-xs text-sm"
+                    />
+                    <Input
+                      value={frReplace}
+                      onChange={(e) => setFrReplace(e.target.value)}
+                      placeholder="Substituir por..."
+                      className="h-8 max-w-xs text-sm"
+                    />
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={frCaseSensitive}
+                        onChange={(e) => setFrCaseSensitive(e.target.checked)}
+                      />
+                      Diferenciar maiúsc./minúsc.
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!frFind.trim() || previewFrMutation.isPending}
+                      onClick={() =>
+                        previewFrMutation.mutate({ find: frFind, case_sensitive: frCaseSensitive })
+                      }
+                    >
+                      Buscar
+                    </Button>
+                    {previewFrMutation.data && (
+                      <>
+                        <span className="text-xs text-muted-foreground">
+                          {previewFrMutation.data.length} card(s) encontrado(s)
+                        </span>
+                        {previewFrMutation.data.length > 0 && (
+                          <Button
+                            size="sm"
+                            disabled={applyFrMutation.isPending}
+                            onClick={() => {
+                              const ok = window.confirm(
+                                `Substituir em ${previewFrMutation.data.length} card(s)? Fica registrado no histórico de cada um.`,
+                              );
+                              if (ok) {
+                                applyFrMutation.mutate({
+                                  find: frFind,
+                                  replace: frReplace,
+                                  case_sensitive: frCaseSensitive,
+                                });
+                              }
+                            }}
+                          >
+                            Substituir tudo
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {previewFrMutation.data && previewFrMutation.data.length > 0 && (
+                    <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-muted-foreground">
+                      {previewFrMutation.data.slice(0, 10).map((c) => (
+                        <li key={c.id} className="truncate">
+                          {c.pergunta}
+                        </li>
+                      ))}
+                      {previewFrMutation.data.length > 10 && (
+                        <li>...e mais {previewFrMutation.data.length - 10}</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
               {showTrash ? (
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground">

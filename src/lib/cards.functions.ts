@@ -446,6 +446,90 @@ export const bulkDeleteCards = createServerFn({ method: "POST" })
     return { count: data.ids.length };
   });
 
+function buildReplacer(find: string, replace: string, caseSensitive: boolean) {
+  if (caseSensitive) {
+    return (text: string) => text.split(find).join(replace);
+  }
+  const escaped = find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(escaped, "gi");
+  return (text: string) => text.replace(re, replace);
+}
+
+/** Preview which cards contain the search term, before committing to the
+ * replace — bulk text edits are easy to get wrong once, worth seeing the
+ * blast radius first. */
+export const previewFindReplace = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { find: string; case_sensitive?: boolean }) => {
+    const find = input.find ?? "";
+    if (!find.trim()) throw new Error("Informe o termo a buscar.");
+    return { find, case_sensitive: !!input.case_sensitive };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: cards, error } = await context.supabase
+      .from("cards")
+      .select("id,pergunta,resposta,deck_id")
+      .eq("user_id", context.userId)
+      .is("deleted_at", null);
+    if (error) throw new Error(error.message);
+
+    const needle = data.case_sensitive ? data.find : data.find.toLowerCase();
+    const matches = (cards ?? []).filter((c) => {
+      const hay = `${c.pergunta}\n${c.resposta}`;
+      return (data.case_sensitive ? hay : hay.toLowerCase()).includes(needle);
+    });
+    return matches;
+  });
+
+/** Applies the replace to every matching card's pergunta/resposta, and
+ * logs each change to card_edit_logs like a normal edit would. */
+export const applyFindReplace = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { find: string; replace: string; case_sensitive?: boolean }) => {
+    const find = input.find ?? "";
+    if (!find.trim()) throw new Error("Informe o termo a buscar.");
+    return { find, replace: input.replace ?? "", case_sensitive: !!input.case_sensitive };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: cards, error } = await context.supabase
+      .from("cards")
+      .select("id,pergunta,resposta")
+      .eq("user_id", context.userId)
+      .is("deleted_at", null);
+    if (error) throw new Error(error.message);
+
+    const apply = buildReplacer(data.find, data.replace, data.case_sensitive);
+
+    let count = 0;
+    for (const card of cards ?? []) {
+      const newPergunta = apply(card.pergunta);
+      const newResposta = apply(card.resposta);
+      if (newPergunta === card.pergunta && newResposta === card.resposta) continue;
+
+      const { error: updErr } = await context.supabase
+        .from("cards")
+        .update({ pergunta: newPergunta, resposta: newResposta })
+        .eq("id", card.id)
+        .eq("user_id", context.userId);
+      if (updErr) throw new Error(updErr.message);
+      count++;
+
+      try {
+        await context.supabase.from("card_edit_logs").insert({
+          user_id: context.userId,
+          card_id: card.id,
+          previous_pergunta: card.pergunta,
+          previous_resposta: card.resposta,
+          new_pergunta: newPergunta,
+          new_resposta: newResposta,
+        });
+      } catch (e) {
+        console.warn("Failed to write card_edit_logs", e);
+      }
+    }
+    return { count };
+  });
+
 export const updateCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { id: string; pergunta: string; resposta: string }) => {
@@ -508,6 +592,82 @@ export const listCardEditLogs = createServerFn({ method: "GET" })
       .order("edited_at", { ascending: false });
     if (error) throw new Error(error.message);
     return rows ?? [];
+  });
+
+function normalizePair(idA: string, idB: string): [string, string] {
+  return idA < idB ? [idA, idB] : [idB, idA];
+}
+
+/** Links two cards (undirected — order doesn't matter). Silently no-ops if
+ * the pair is already linked, since a duplicate click shouldn't error. */
+export const linkCards = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { card_id_a: string; card_id_b: string }) => {
+    if (!input.card_id_a?.trim() || !input.card_id_b?.trim())
+      throw new Error("IDs de card inválidos.");
+    if (input.card_id_a === input.card_id_b)
+      throw new Error("Um card não pode se relacionar com ele mesmo.");
+    const [card_a_id, card_b_id] = normalizePair(input.card_id_a, input.card_id_b);
+    return { card_a_id, card_b_id };
+  })
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase.from("card_links").insert({
+      user_id: context.userId,
+      card_a_id: data.card_a_id,
+      card_b_id: data.card_b_id,
+    });
+    // 23505 = unique_violation — already linked, treat as success.
+    if (error && (error as { code?: string }).code !== "23505") throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const unlinkCards = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { card_id_a: string; card_id_b: string }) => {
+    if (!input.card_id_a?.trim() || !input.card_id_b?.trim())
+      throw new Error("IDs de card inválidos.");
+    const [card_a_id, card_b_id] = normalizePair(input.card_id_a, input.card_id_b);
+    return { card_a_id, card_b_id };
+  })
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("card_links")
+      .delete()
+      .eq("card_a_id", data.card_a_id)
+      .eq("card_b_id", data.card_b_id)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/** The other card in every link this card is part of, with just enough
+ * fields to show a chip and open a preview. */
+export const listCardLinks = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { card_id: string }) => {
+    if (!input.card_id?.trim()) throw new Error("ID do card inválido.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const { data: links, error } = await context.supabase
+      .from("card_links")
+      .select("card_a_id,card_b_id")
+      .eq("user_id", context.userId)
+      .or(`card_a_id.eq.${data.card_id},card_b_id.eq.${data.card_id}`);
+    if (error) throw new Error(error.message);
+
+    const otherIds = (links ?? []).map((l) =>
+      l.card_a_id === data.card_id ? l.card_b_id : l.card_a_id,
+    );
+    if (otherIds.length === 0) return [];
+
+    const { data: otherCards, error: cardsError } = await context.supabase
+      .from("cards")
+      .select("id,pergunta,resposta,deck_id")
+      .in("id", otherIds)
+      .is("deleted_at", null);
+    if (cardsError) throw new Error(cardsError.message);
+    return otherCards ?? [];
   });
 
 /** Edits just the tags — separate from updateCard so tagging a card never
