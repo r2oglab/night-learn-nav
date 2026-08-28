@@ -88,9 +88,14 @@ function Index() {
     queryFn: () => fetchDecks(),
   });
 
+  // Prefixed with "cards" (not just "todayFocus") so every card mutation
+  // across the app — grade, delete, restore, suspend, edit... — which all
+  // already call invalidateQueries({queryKey: ["cards"]}) sweeps this up
+  // too, instead of needing every one of those ~20 call sites updated by
+  // hand to also target this key.
   const fetchTodayFocus = useServerFn(getTodayFocus);
   const { data: todayFocus } = useQuery({
-    queryKey: ["todayFocus"],
+    queryKey: ["cards", "todayFocus"],
     queryFn: () => fetchTodayFocus({ data: { tz_offset_minutes: new Date().getTimezoneOffset() } }),
   });
 
@@ -218,7 +223,7 @@ function Index() {
     : "";
 
   const { data: heatmap = [], isLoading: heatLoading } = useQuery({
-    queryKey: ["heatmap", heatStartISO, heatEndISO],
+    queryKey: ["cards", "heatmap", heatStartISO, heatEndISO],
     enabled: !decksLoading && dateReady,
     retry: 2,
     queryFn: async () => {
@@ -271,7 +276,7 @@ function Index() {
   // Overdue count: cards strictly before today, regardless of which month is
   // being viewed — mirrors the same "atrasado" definition used em Revisões.
   const { data: overdueCount = 0 } = useQuery({
-    queryKey: ["overdue-count", heatEndISO],
+    queryKey: ["cards", "overdue-count", heatEndISO],
     enabled: dateReady,
     queryFn: async () => {
       const { count, error } = await supabase
@@ -295,7 +300,7 @@ function Index() {
    * it, regardless of the date printed on the row.
    */
   const { data: forecast = [] } = useQuery({
-    queryKey: ["review-forecast", heatEndISO],
+    queryKey: ["cards", "review-forecast", heatEndISO],
     enabled: dateReady,
     queryFn: async () => {
       const horizon = new Date(`${heatEndISO}T00:00:00`);
