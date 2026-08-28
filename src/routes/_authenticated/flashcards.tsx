@@ -29,6 +29,12 @@ import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -445,7 +451,7 @@ function FlashcardsPage() {
   }
 
   const [studySessionCards, setStudySessionCards] = useState<any[] | null>(null);
-  const [showStudySession, setShowStudySession] = useState(false);
+  const [studySessionMode, setStudySessionMode] = useState<"free" | "exam" | "read" | null>(null);
   const [showLeechesOnly, setShowLeechesOnly] = useState(false);
   const leechCards = cards.filter((c) => isLeech(c));
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
@@ -460,11 +466,11 @@ function FlashcardsPage() {
     setActiveTagFilter((prev) => (prev === tag ? null : tag));
   }
 
-  /** Estuda um deck (e subdecks) sem tocar no agendamento do FSRS. Respeita
-   * o filtro de tag ativo, se houver um, além do deck escolhido. */
-  function startFreeStudy(deck: DeckRow) {
+  /** Cards do deck (e subdecks), respeitando o filtro de tag ativo e
+   * pulando suspensos — a base compartilhada pelos três modos de sessão. */
+  function buildDeckSubset(deck: DeckRow) {
     const ids = new Set(collectDeckIds(deck.id));
-    const subset = cards
+    return cards
       .filter(
         (c: any) =>
           ids.has(c.deck_id) &&
@@ -477,12 +483,51 @@ function FlashcardsPage() {
         level1SubdeckName: findLevel1SubdeckName(c.deck_id),
         occlusion_regions: Array.isArray(c.occlusion_regions) ? c.occlusion_regions : null,
       }));
+  }
+
+  function shuffled<T>(arr: T[]): T[] {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j] as T, copy[i] as T];
+    }
+    return copy;
+  }
+
+  /** Estuda um deck (e subdecks) sem tocar no agendamento do FSRS. Respeita
+   * o filtro de tag ativo, se houver um, além do deck escolhido. */
+  function startFreeStudy(deck: DeckRow) {
+    const subset = buildDeckSubset(deck);
     if (subset.length === 0) {
       toast.info("Nenhum card neste deck.");
       return;
     }
     setStudySessionCards(subset);
-    setShowStudySession(true);
+    setStudySessionMode("free");
+  }
+
+  /** Folheia pergunta+resposta do deck em sequência, sem nota nem FSRS —
+   * pra rever conteúdo antes de uma aula, não pra testar retenção. */
+  function startReadMode(deck: DeckRow) {
+    const subset = buildDeckSubset(deck);
+    if (subset.length === 0) {
+      toast.info("Nenhum card neste deck.");
+      return;
+    }
+    setStudySessionCards(subset);
+    setStudySessionMode("read");
+  }
+
+  /** Prova simulada: mesmo mecanismo do estudo livre, mas embaralhado —
+   * pra simular a ordem imprevisível de uma prova de verdade. */
+  function startExamMode(deck: DeckRow) {
+    const subset = shuffled(buildDeckSubset(deck));
+    if (subset.length === 0) {
+      toast.info("Nenhum card neste deck.");
+      return;
+    }
+    setStudySessionCards(subset);
+    setStudySessionMode("exam");
   }
 
   const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
@@ -1016,16 +1061,30 @@ function FlashcardsPage() {
                   <Star className={cn("size-3.5", deck.pinned && "fill-current text-primary")} />
                   <span className="sr-only">{deck.pinned ? "Desafixar" : "Fixar no topo"}</span>
                 </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-7"
-                  title="Estudar livre — não altera o agendamento do FSRS"
-                  onClick={() => startFreeStudy(deck)}
-                >
-                  <BookOpen className="size-3.5" />
-                  <span className="sr-only">Estudar livre</span>
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="size-7"
+                      title="Modos de estudo sem agendamento"
+                    >
+                      <BookOpen className="size-3.5" />
+                      <span className="sr-only">Modos de estudo</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => startFreeStudy(deck)}>
+                      Estudar livre
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => startExamMode(deck)}>
+                      Prova simulada
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => startReadMode(deck)}>
+                      Modo leitura
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <Button
                   size="icon"
                   variant="ghost"
@@ -1124,13 +1183,15 @@ function FlashcardsPage() {
                   setPreviewCard((prev) => (prev ? { ...prev, ...updated } : prev));
                 }}
               />
-              {showStudySession && studySessionCards && (
+              {studySessionMode && studySessionCards && (
                 <div className="fixed inset-0 z-50">
                   <ReviewSession
                     cards={studySessionCards}
                     freeMode
-                    onExit={() => setShowStudySession(false)}
-                    onComplete={() => setShowStudySession(false)}
+                    examMode={studySessionMode === "exam"}
+                    readOnly={studySessionMode === "read"}
+                    onExit={() => setStudySessionMode(null)}
+                    onComplete={() => setStudySessionMode(null)}
                   />
                 </div>
               )}

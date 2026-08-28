@@ -16,6 +16,7 @@ import { reviewCard, undoReview, postponeCard } from "@/lib/cards.functions";
 import { Input } from "@/components/ui/input";
 import { compareAnswer, type DiffPart } from "@/lib/answer-diff";
 import { explainCard } from "@/lib/ai.functions";
+import { cn } from "@/lib/utils";
 
 export type OcclusionRegion = {
   id: string;
@@ -51,14 +52,23 @@ export function ReviewSession({
   onExit,
   onComplete,
   freeMode = false,
+  readOnly = false,
+  examMode = false,
 }: {
   cards: Card[];
   onExit: () => void;
   onComplete?: () => void;
   freeMode?: boolean;
+  /** Browse pergunta+resposta together, no grading, no FSRS — "folhear" a
+   * deck before class instead of testing yourself. Implies freeMode. */
+  readOnly?: boolean;
+  /** Same no-FSRS mechanics as freeMode — caller passes both together —
+   * just a different badge so a shuffled self-test doesn't look like a
+   * regular free-study pass. */
+  examMode?: boolean;
 }) {
   const [index, setIndex] = useState(0);
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(readOnly);
   const [loading, setLoading] = useState(false);
   const [finished, setFinished] = useState(false);
   const [tally, setTally] = useState<Record<string, DeckTally>>({});
@@ -75,6 +85,7 @@ export function ReviewSession({
   );
   const [explaining, setExplaining] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [gradeFlash, setGradeFlash] = useState<"correct" | "incorrect" | null>(null);
 
   async function handleExplain() {
     if (!current || explaining) return;
@@ -116,7 +127,7 @@ export function ReviewSession({
   const showImageOnFront = imagePlacement === "frente" || imagePlacement === "ambos";
   const showImageOnBack = imagePlacement === "verso" || imagePlacement === "ambos";
   const comparison =
-    isTypeIn && revealed ? compareAnswer(typedAnswer, current?.resposta ?? "") : null;
+    isTypeIn && revealed && !readOnly ? compareAnswer(typedAnswer, current?.resposta ?? "") : null;
 
   function renderDiff(parts: DiffPart[]) {
     return parts.map((part, i) => (
@@ -202,6 +213,23 @@ export function ReviewSession({
     }
   }
 
+  function handleReadOnlyNext() {
+    const next = index + 1;
+    if (next >= sessionCards.length) {
+      setFinished(true);
+      return;
+    }
+    setIndex(next);
+    setExplanation(sessionCards[next]?.explanation ?? null);
+  }
+
+  function handleReadOnlyPrev() {
+    if (index === 0) return;
+    const prev = index - 1;
+    setIndex(prev);
+    setExplanation(sessionCards[prev]?.explanation ?? null);
+  }
+
   async function handleRating(rating: number) {
     if (!current) return;
     // `loading` is React state, so it doesn't flip until the next render —
@@ -222,6 +250,8 @@ export function ReviewSession({
       }
 
       const isCorrect = rating !== Rating.Again;
+      setGradeFlash(isCorrect ? "correct" : "incorrect");
+      setTimeout(() => setGradeFlash(null), 500);
       const deckName = current.rootDeckName ?? "(sem deck)";
       setTally((prev) => {
         const entry = prev[deckName] ?? { correct: 0, incorrect: 0 };
@@ -282,6 +312,16 @@ export function ReviewSession({
         return;
       }
       if (finished || loading || !current) return;
+      if (readOnly) {
+        if (e.key === "Enter" || e.code === "Space" || e.key === "ArrowRight") {
+          e.preventDefault();
+          handleReadOnlyNext();
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          handleReadOnlyPrev();
+        }
+        return;
+      }
       if (!revealed) {
         // On type-in cards the answer box owns Space, so only Enter reveals.
         if (e.key === "Enter" || (e.code === "Space" && current.card_type !== "digitar")) {
@@ -306,7 +346,7 @@ export function ReviewSession({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [revealed, loading, finished, current, showShortcuts]);
+  }, [revealed, loading, finished, current, showShortcuts, readOnly, index, sessionCards]);
 
   if (!sessionCards || sessionCards.length === 0) {
     return (
@@ -320,6 +360,21 @@ export function ReviewSession({
   }
 
   if (finished) {
+    if (readOnly) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-lg bg-card p-4 shadow-lg sm:p-6">
+            <h2 className="text-lg font-semibold">Leitura concluída</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Você releu {sessionCards.length} card(s). Nada foi alterado no agendamento.
+            </p>
+            <div className="mt-6 flex justify-end">
+              <Button onClick={() => onComplete?.()}>Concluir</Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     // Keys come from the objects themselves, so lookups always hit — but
     // TypeScript can't prove that, and an explicit fallback is safer than
     // a non-null assertion if the shape ever changes.
@@ -344,7 +399,10 @@ export function ReviewSession({
           <h2 className="text-lg font-semibold">Sessão finalizada</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {totalCorrect}/{totalCards} acertos no total
-            {freeMode && " · estudo livre, agendamento não foi alterado"}
+            {freeMode &&
+              (examMode
+                ? " · prova simulada, agendamento não foi alterado"
+                : " · estudo livre, agendamento não foi alterado")}
           </p>
 
           <div className="mt-6 space-y-4">
@@ -458,50 +516,82 @@ export function ReviewSession({
       <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-2 sm:p-4">
         <div className="relative max-h-full w-full max-w-3xl overflow-y-auto rounded-lg bg-card p-4 shadow-lg sm:p-6">
           <div className="flex flex-col items-stretch gap-6">
-            <div className="flex items-center gap-3">
-              <div className="text-sm font-medium text-muted-foreground">
-                {index + 1}/{sessionCards.length}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <div className="text-sm font-medium text-muted-foreground">
+                  {index + 1}/{sessionCards.length}
+                </div>
+                {readOnly ? (
+                  <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-500">
+                    Leitura
+                  </span>
+                ) : examMode ? (
+                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-xs text-violet-400">
+                    Prova simulada
+                  </span>
+                ) : (
+                  freeMode && (
+                    <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-400">
+                      Estudo livre
+                    </span>
+                  )
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="ml-auto size-8">
+                      <MoreVertical className="size-4" />
+                      <span className="sr-only">Opções da sessão</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => setShowShortcuts(true)}>
+                      <Keyboard className="mr-2 size-4" /> Atalhos de teclado
+                    </DropdownMenuItem>
+                    {!freeMode && !readOnly && (
+                      <>
+                        <DropdownMenuItem
+                          disabled={!lastGraded || loading}
+                          onSelect={() => void handleUndo()}
+                        >
+                          <Undo2 className="mr-2 size-4" /> Desfazer
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={loading}
+                          onSelect={() => void handlePostpone(1)}
+                        >
+                          <CalendarClock className="mr-2 size-4" /> Adiar 1 dia
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={loading}
+                          onSelect={() => void handlePostpone(7)}
+                        >
+                          <CalendarClock className="mr-2 size-4" /> Adiar 7 dias
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    <DropdownMenuItem onSelect={() => onExit()}>
+                      <X className="mr-2 size-4" /> Sair da sessão
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-              {freeMode && (
-                <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-400">
-                  Estudo livre
-                </span>
-              )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="ml-auto size-8">
-                    <MoreVertical className="size-4" />
-                    <span className="sr-only">Opções da sessão</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => setShowShortcuts(true)}>
-                    <Keyboard className="mr-2 size-4" /> Atalhos de teclado
-                  </DropdownMenuItem>
-                  {!freeMode && (
-                    <>
-                      <DropdownMenuItem
-                        disabled={!lastGraded || loading}
-                        onSelect={() => void handleUndo()}
-                      >
-                        <Undo2 className="mr-2 size-4" /> Desfazer
-                      </DropdownMenuItem>
-                      <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(1)}>
-                        <CalendarClock className="mr-2 size-4" /> Adiar 1 dia
-                      </DropdownMenuItem>
-                      <DropdownMenuItem disabled={loading} onSelect={() => void handlePostpone(7)}>
-                        <CalendarClock className="mr-2 size-4" /> Adiar 7 dias
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  <DropdownMenuItem onSelect={() => onExit()}>
-                    <X className="mr-2 size-4" /> Sair da sessão
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+
+              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+                  style={{ width: `${(index / sessionCards.length) * 100}%` }}
+                />
+              </div>
             </div>
 
-            <div className="rounded-lg border border-border p-4 sm:p-6 break-words">
+            <div
+              key={current?.id}
+              className={cn(
+                "animate-fade-in-up rounded-lg border border-border p-4 sm:p-6 break-words",
+                gradeFlash === "correct" && "animate-grade-flash-correct",
+                gradeFlash === "incorrect" && "animate-grade-flash-incorrect",
+              )}
+            >
               {current?.tags && current.tags.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-1">
                   {current.tags.map((tag) => (
@@ -555,7 +645,7 @@ export function ReviewSession({
                     />
                   )}
 
-                  {isTypeIn && (
+                  {isTypeIn && !readOnly && (
                     <div className="mt-4">
                       <Input
                         ref={typeInputRef}
@@ -652,7 +742,21 @@ export function ReviewSession({
             )}
 
             <div className="flex items-center gap-3">
-              {!revealed ? (
+              {readOnly ? (
+                <div className="flex w-full gap-2">
+                  <Button
+                    variant="outline"
+                    className="h-12 flex-1 sm:h-9 sm:flex-none"
+                    disabled={index === 0}
+                    onClick={handleReadOnlyPrev}
+                  >
+                    Anterior
+                  </Button>
+                  <Button className="h-12 flex-1 sm:h-9 sm:flex-none" onClick={handleReadOnlyNext}>
+                    Próximo
+                  </Button>
+                </div>
+              ) : !revealed ? (
                 <Button className="h-12 w-full sm:h-10 sm:w-auto" onClick={() => setRevealed(true)}>
                   Revelar resposta
                 </Button>
