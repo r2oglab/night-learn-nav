@@ -457,6 +457,15 @@ export const updateCard = createServerFn({ method: "POST" })
     return { id: input.id, pergunta, resposta };
   })
   .handler(async ({ data, context }) => {
+    // Fetch the pre-edit text first so the log captures a real before/after,
+    // not just the after. Best-effort: a failed fetch here shouldn't block
+    // the actual edit from going through.
+    const { data: before } = await context.supabase
+      .from("cards")
+      .select("pergunta,resposta")
+      .eq("id", data.id)
+      .maybeSingle();
+
     const { data: updated, error } = await context.supabase
       .from("cards")
       .update({ pergunta: data.pergunta, resposta: data.resposta })
@@ -464,7 +473,41 @@ export const updateCard = createServerFn({ method: "POST" })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+
+    if (before && (before.pergunta !== data.pergunta || before.resposta !== data.resposta)) {
+      try {
+        await context.supabase.from("card_edit_logs").insert({
+          user_id: context.userId,
+          card_id: data.id,
+          previous_pergunta: before.pergunta,
+          previous_resposta: before.resposta,
+          new_pergunta: data.pergunta,
+          new_resposta: data.resposta,
+        });
+      } catch (e) {
+        console.warn("Failed to write card_edit_logs", e);
+      }
+    }
+
     return updated;
+  });
+
+/** History of pergunta/resposta edits for one card, most recent first. */
+export const listCardEditLogs = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { card_id: string }) => {
+    if (!input.card_id?.trim()) throw new Error("ID do card inválido.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await context.supabase
+      .from("card_edit_logs")
+      .select("*")
+      .eq("card_id", data.card_id)
+      .eq("user_id", context.userId)
+      .order("edited_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
   });
 
 /** Edits just the tags — separate from updateCard so tagging a card never

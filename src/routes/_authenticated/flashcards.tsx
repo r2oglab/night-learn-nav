@@ -62,6 +62,7 @@ import {
   listTrashedCards,
   restoreCard,
   permanentlyDeleteCard,
+  listCardEditLogs,
 } from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -403,6 +404,14 @@ function FlashcardsPage() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteDraft, setEditingNoteDraft] = useState("");
 
+  const [viewingHistoryId, setViewingHistoryId] = useState<string | null>(null);
+  const fetchCardHistory = useServerFn(listCardEditLogs);
+  const { data: cardHistory = [], isLoading: historyLoading } = useQuery({
+    queryKey: ["cardEditLogs", viewingHistoryId],
+    queryFn: () => fetchCardHistory({ data: { card_id: viewingHistoryId as string } }),
+    enabled: !!viewingHistoryId,
+  });
+
   // Build maps for tree
   const deckById = Object.fromEntries(decks.map((t: any) => [t.id, t]));
   const childrenMap: Record<string, any[]> = {};
@@ -725,6 +734,15 @@ function FlashcardsPage() {
                       tem nota
                     </span>
                   )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setViewingHistoryId(viewingHistoryId === card.id ? null : card.id)
+                    }
+                    className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  >
+                    {viewingHistoryId === card.id ? "fechar histórico" : "histórico"}
+                  </button>
                 </div>
                 {editingTagsId === card.id && (
                   <div className="mb-2 max-w-xs">
@@ -732,6 +750,35 @@ function FlashcardsPage() {
                       tags={(card.tags ?? []) as string[]}
                       onChange={(next) => updateTagsMutation.mutate({ id: card.id, tags: next })}
                     />
+                  </div>
+                )}
+                {viewingHistoryId === card.id && (
+                  <div className="mb-2 max-w-sm rounded-md border border-border bg-muted/20 p-2 text-xs">
+                    {historyLoading ? (
+                      <p className="text-muted-foreground">Carregando...</p>
+                    ) : cardHistory.length === 0 ? (
+                      <p className="text-muted-foreground">
+                        Nenhuma edição de pergunta/resposta registrada ainda.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {cardHistory.map((entry) => (
+                          <li key={entry.id} className="border-b border-border pb-2 last:border-0">
+                            <p className="text-muted-foreground">
+                              {new Date(entry.edited_at).toLocaleString("pt-BR")}
+                            </p>
+                            <p className="mt-1">
+                              <span className="text-muted-foreground">antes: </span>
+                              {entry.previous_pergunta}
+                            </p>
+                            <p>
+                              <span className="text-muted-foreground">depois: </span>
+                              {entry.new_pergunta}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 )}
                 {editingNoteId === card.id && (

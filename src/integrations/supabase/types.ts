@@ -281,6 +281,47 @@ export type Database = {
           },
         ];
       };
+      card_edit_logs: {
+        Row: {
+          id: string;
+          user_id: string;
+          card_id: string;
+          previous_pergunta: string;
+          previous_resposta: string;
+          new_pergunta: string;
+          new_resposta: string;
+          edited_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          card_id: string;
+          previous_pergunta: string;
+          previous_resposta: string;
+          new_pergunta: string;
+          new_resposta: string;
+          edited_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          card_id?: string;
+          previous_pergunta?: string;
+          previous_resposta?: string;
+          new_pergunta?: string;
+          new_resposta?: string;
+          edited_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "card_edit_logs_card_id_fkey";
+            columns: ["card_id"];
+            isOneToOne: false;
+            referencedRelation: "cards";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
