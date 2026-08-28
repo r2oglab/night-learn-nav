@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
@@ -8,10 +8,13 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { useServerFn } from "@tanstack/react-start";
 
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { getUserSettings } from "../lib/user_settings.functions";
+import { applyTheme } from "../lib/theme";
 
 function NotFoundComponent() {
   return (
@@ -121,11 +124,38 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Applies theme, accent color, and UI scale to <html> from the saved
+ * settings. Lives at the true app root — not _authenticated's layout,
+ * which only wraps Revisões/Flashcards/Criação — so it takes effect on
+ * every page (Dashboard, Configurações included) and reacts immediately
+ * when the setting changes, instead of only on the next navigation into a
+ * wrapped route. On /auth there's no session, so the fetch just fails
+ * quietly (retry off) and appearance stays at its default. */
+function AppearanceEffects() {
+  const fetchSettings = useServerFn(getUserSettings);
+  const { data: settings } = useQuery({
+    queryKey: ["user_settings"],
+    queryFn: () => fetchSettings(),
+    retry: false,
+  });
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = settings?.ui_scale ? `${settings.ui_scale}%` : "";
+  }, [settings?.ui_scale]);
+
+  useEffect(() => {
+    applyTheme(settings?.theme, settings?.accent_hue);
+  }, [settings?.theme, settings?.accent_hue]);
+
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
+      <AppearanceEffects />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster />

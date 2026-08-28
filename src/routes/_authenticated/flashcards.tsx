@@ -1480,14 +1480,20 @@ function FlashcardsPage() {
                     )}
                   </div>
                   {previewFrMutation.data && previewFrMutation.data.length > 0 && (
-                    <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-muted-foreground">
+                    <ul className="max-h-48 space-y-1.5 overflow-y-auto border-t border-border pt-2">
                       {previewFrMutation.data.slice(0, 10).map((c) => (
-                        <li key={c.id} className="truncate">
+                        <li
+                          key={c.id}
+                          className="truncate rounded-md bg-background px-2.5 py-1.5 text-sm"
+                          title={c.pergunta}
+                        >
                           {c.pergunta}
                         </li>
                       ))}
                       {previewFrMutation.data.length > 10 && (
-                        <li>...e mais {previewFrMutation.data.length - 10}</li>
+                        <li className="px-2.5 py-1 text-xs text-muted-foreground">
+                          ...e mais {previewFrMutation.data.length - 10}
+                        </li>
                       )}
                     </ul>
                   )}
