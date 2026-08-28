@@ -14,7 +14,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
-import { generateCardsFromText } from "@/lib/ai.functions";
+import { generateCardsFromText, suggestMissingCards } from "@/lib/ai.functions";
 import { Textarea } from "@/components/ui/textarea";
 import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -105,6 +105,7 @@ function CriacaoPage() {
   const [clozeText, setClozeText] = useState("");
   const [hiddenTokens, setHiddenTokens] = useState<Set<number>>(new Set());
   const hasHiddenWord = hiddenTokens.size > 0;
+  const [oneCardPerGap, setOneCardPerGap] = useState(false);
 
   function toggleClozeToken(i: number) {
     setHiddenTokens((prev) => {
@@ -136,6 +137,7 @@ function CriacaoPage() {
   const [csvFileName, setCsvFileName] = useState("");
   const [csvTagsColumn, setCsvTagsColumn] = useState<number | null>(null);
   const [csvUseTagsAsDeck, setCsvUseTagsAsDeck] = useState(false);
+  const [csvAutoTag, setCsvAutoTag] = useState("");
   const [importing, setImporting] = useState(false);
   const runImport = useServerFn(importCards);
 
@@ -151,6 +153,9 @@ function CriacaoPage() {
   const [generating, setGenerating] = useState(false);
   const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
 
+  const runSuggestMissing = useServerFn(suggestMissingCards);
+  const [suggestMissingMode, setSuggestMissingMode] = useState(false);
+
   async function handleGenerate() {
     setGenerating(true);
     try {
@@ -159,6 +164,34 @@ function CriacaoPage() {
       // Everything starts checked: reviewing a list and unchecking the odd
       // one out is less work than ticking twelve good cards by hand.
       setAiAccepted(new Set(result.cards.map((_, i) => i)));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  /** Same review flow as handleGenerate, but the suggestions come from
+   * comparing the pasted text against this deck's existing cards instead
+   * of generating fresh cards blind. */
+  async function handleSuggestMissing(deck: string) {
+    if (!deck) {
+      toast.error("Informe o deck pra comparar com os cards existentes.");
+      return;
+    }
+    setGenerating(true);
+    try {
+      const deckRow = await createNewDeck({ data: { path: deck } });
+      if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
+      const result = await runSuggestMissing({
+        data: { deck_id: deckRow.id, text: aiSource },
+      });
+      const cards = result.suggestions.map((s) => ({ pergunta: s.pergunta, resposta: s.resposta }));
+      setAiProposals(cards);
+      setAiAccepted(new Set(cards.map((_, i) => i)));
+      if (cards.length === 0) {
+        toast.success("Nada faltando — o material já parece bem coberto pelos cards existentes.");
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -355,6 +388,7 @@ function CriacaoPage() {
       !!firstDataRow && firstDataRow.length >= 3 && (firstDataRow[0] ?? "").includes("::");
     setCsvRawRows(rows);
     setCsvFileName(file.name);
+    setCsvAutoTag(file.name.replace(/\.(csv|txt)$/i, "").trim());
     setCsvDeckColumn(looksLikeDeckColumn);
     recomputeCsvPreview(rows, csvHasHeader, looksLikeDeckColumn, effectiveDeck, tagsCol, false);
   }
@@ -367,7 +401,11 @@ function CriacaoPage() {
     setImporting(true);
     try {
       const result = await runImport({
-        data: { cards: csvPreview, tz_offset_minutes: new Date().getTimezoneOffset() },
+        data: {
+          cards: csvPreview,
+          tz_offset_minutes: new Date().getTimezoneOffset(),
+          tags: csvAutoTag.trim() ? [csvAutoTag.trim()] : [],
+        },
       });
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
@@ -378,6 +416,7 @@ function CriacaoPage() {
       setCsvSkipped(0);
       setCsvTagsColumn(null);
       setCsvUseTagsAsDeck(false);
+      setCsvAutoTag("");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -519,7 +558,13 @@ function CriacaoPage() {
                   const deck = deckPath.trim();
                   if (cardType === "ia") {
                     // Generating needs no deck; only accepting the results does.
+                    // The "faltantes" mode is the exception — it needs the deck
+                    // up front, to know which existing cards to compare against.
                     if (!aiProposals) {
+                      if (suggestMissingMode) {
+                        await handleSuggestMissing(deck);
+                        return;
+                      }
                       await handleGenerate();
                       return;
                     }
@@ -555,6 +600,39 @@ function CriacaoPage() {
                   try {
                     const deckRow = await createNewDeck({ data: { path: deck } });
                     if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
+
+                    if (cloze && oneCardPerGap && hiddenTokens.size > 1) {
+                      // Um card por lacuna: cada palavra marcada vira seu
+                      // próprio card, escondida sozinha — não usa a
+                      // mutation `create` porque o onSuccess dela reseta o
+                      // formulário a cada chamada, e aqui isso precisa
+                      // acontecer só uma vez, no final do lote.
+                      const indices = Array.from(hiddenTokens);
+                      for (const idx of indices) {
+                        const singlePergunta = buildClozeText(clozeText, new Set([idx]));
+                        await addCard({
+                          data: {
+                            deck_id: deckRow.id,
+                            pergunta: singlePergunta,
+                            resposta: singlePergunta,
+                            invert: false,
+                            cloze: true,
+                            typeIn: false,
+                            tags,
+                            tz_offset_minutes: new Date().getTimezoneOffset(),
+                          },
+                        });
+                      }
+                      setDeckPath("");
+                      setClozeText("");
+                      setHiddenTokens(new Set());
+                      setTags([]);
+                      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+                      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+                      toast.success(`${indices.length} cards criados (um por lacuna)`);
+                      return;
+                    }
+
                     const pergunta = cloze ? buildClozeQuestion() : question.trim();
 
                     let imageUrl: string | undefined;
@@ -647,6 +725,14 @@ function CriacaoPage() {
                   <div className="grid gap-3">
                     {!aiProposals ? (
                       <>
+                        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={suggestMissingMode}
+                            onChange={(e) => setSuggestMissingMode(e.target.checked)}
+                          />
+                          Só sugerir o que falta (compara com os cards que já existem no deck)
+                        </label>
                         <label className="flex flex-col gap-2 text-sm text-muted-foreground">
                           Conteúdo (aula, resumo, problema de PBL...)
                           <Textarea
@@ -656,36 +742,38 @@ function CriacaoPage() {
                             className="min-h-40"
                           />
                         </label>
-                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="text-muted-foreground">Quantos cards:</span>
-                          <div className="flex flex-wrap gap-1">
-                            {[5, 10, 15, 20, 30].map((n) => (
-                              <Button
-                                key={n}
-                                type="button"
-                                size="sm"
-                                variant={aiCount === n ? "default" : "outline"}
-                                onClick={() => setAiCount(n)}
-                              >
-                                {n}
-                              </Button>
-                            ))}
+                        {!suggestMissingMode && (
+                          <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <span className="text-muted-foreground">Quantos cards:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {[5, 10, 15, 20, 30].map((n) => (
+                                <Button
+                                  key={n}
+                                  type="button"
+                                  size="sm"
+                                  variant={aiCount === n ? "default" : "outline"}
+                                  onClick={() => setAiCount(n)}
+                                >
+                                  {n}
+                                </Button>
+                              ))}
+                            </div>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={40}
+                              value={aiCount}
+                              onChange={(e) =>
+                                setAiCount(Math.min(40, Math.max(1, Number(e.target.value) || 1)))
+                              }
+                              className="w-20"
+                              aria-label="Quantidade personalizada"
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {aiSource.trim().length} caracteres
+                            </span>
                           </div>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={40}
-                            value={aiCount}
-                            onChange={(e) =>
-                              setAiCount(Math.min(40, Math.max(1, Number(e.target.value) || 1)))
-                            }
-                            className="w-20"
-                            aria-label="Quantidade personalizada"
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {aiSource.trim().length} caracteres
-                          </span>
-                        </div>
+                        )}
                       </>
                     ) : (
                       <>
@@ -824,6 +912,7 @@ function CriacaoPage() {
                               setCsvSkipped(0);
                               setCsvTagsColumn(null);
                               setCsvUseTagsAsDeck(false);
+                              setCsvAutoTag("");
                             }}
                           >
                             Trocar arquivo
@@ -889,6 +978,18 @@ function CriacaoPage() {
                             </label>
                           )}
                         </div>
+
+                        <label className="flex flex-col gap-1.5 text-sm">
+                          <span className="text-muted-foreground">
+                            Tag automática (opcional) — marca todos os cards deste import
+                          </span>
+                          <Input
+                            value={csvAutoTag}
+                            onChange={(e) => setCsvAutoTag(e.target.value)}
+                            placeholder="Sem tag"
+                            className="max-w-xs"
+                          />
+                        </label>
 
                         {csvPreview.length > 0 && (
                           <div className="overflow-x-auto rounded-lg border border-border">
@@ -1057,6 +1158,17 @@ function CriacaoPage() {
                       }}
                       onToggleToken={toggleClozeToken}
                     />
+                    {hiddenTokens.size > 1 && (
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={oneCardPerGap}
+                          onChange={(e) => setOneCardPerGap(e.target.checked)}
+                        />
+                        Criar {hiddenTokens.size} cards separados (um por lacuna) em vez de 1 com
+                        todas escondidas juntas
+                      </label>
+                    )}
                     <label className="flex flex-col gap-2 text-sm text-muted-foreground">
                       Tags (opcional)
                       <TagInput tags={tags} onChange={setTags} />
@@ -1178,7 +1290,11 @@ function CriacaoPage() {
                   disabled={
                     cardType === "ia"
                       ? generating ||
-                        (aiProposals ? aiAccepted.size === 0 : aiSource.trim().length < 40)
+                        (aiProposals
+                          ? aiAccepted.size === 0
+                          : suggestMissingMode
+                            ? !deckPath.trim() || aiSource.trim().length < 40
+                            : aiSource.trim().length < 40)
                       : cardType === "importar"
                         ? importing || !csvPreview || csvPreview.length === 0
                         : cardType === "oclusao"
@@ -1208,7 +1324,9 @@ function CriacaoPage() {
                   {cardType === "ia"
                     ? aiProposals
                       ? `Criar ${aiAccepted.size} card(s)`
-                      : "Gerar cards"
+                      : suggestMissingMode
+                        ? "Analisar lacunas"
+                        : "Gerar cards"
                     : cardType === "importar"
                       ? `Importar ${csvPreview?.length ?? ""} card(s)`
                       : cardType === "oclusao"

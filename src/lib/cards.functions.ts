@@ -42,6 +42,7 @@ export const getHeatmapData = createServerFn({ method: "POST" })
     const { data: rows, error } = await context.supabase
       .from("cards")
       .select("id,last_review")
+      .is("deleted_at", null)
       .gte("last_review", data.start)
       .lt("last_review", endExclusiveISO);
     if (error) throw new Error(error.message);
@@ -295,7 +296,7 @@ export const listTrashedCards = createServerFn({ method: "GET" })
 
     if (expired && expired.length > 0) {
       const ids = expired.map((c: { id: string }) => c.id);
-      await context.supabase.from("cards").delete().in("id", ids);
+      await context.supabase.from("cards").delete().in("id", ids).eq("user_id", context.userId);
       await cleanupOrphanedCardImages(
         context.supabase,
         expired.map((c: { image_url: string | null }) => c.image_url),
@@ -384,7 +385,13 @@ export const duplicateCard = createServerFn({ method: "POST" })
         card_type: original.card_type,
         image_url: original.image_url,
         image_placement: original.image_placement,
+        // Occlusion cards are defined by these two fields — copying the
+        // image without them would produce a card the review screen reads
+        // as a plain image card, i.e. a broken duplicate.
+        occlusion_regions: original.occlusion_regions,
+        occlusion_target_id: original.occlusion_target_id,
         tags: original.tags,
+        note: original.note,
         ...newCardFields(data.tz_offset_minutes),
       })
       .select("*")

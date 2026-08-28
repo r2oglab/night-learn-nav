@@ -400,6 +400,36 @@ function Configuracoes() {
                     </div>
                   </div>
 
+                  <div className="grid gap-2 border-t border-border pt-4">
+                    <div className="text-sm text-muted-foreground">Widgets do Dashboard</div>
+                    {[
+                      { key: "foco", label: "Foco de hoje" },
+                      { key: "previsao", label: "Próximas revisões (previsão de 14 dias)" },
+                    ].map((widget) => {
+                      const hidden = (settings?.hidden_widgets ?? []).includes(widget.key);
+                      return (
+                        <label key={widget.key} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={!hidden}
+                            disabled={upsertMutation.isPending}
+                            onChange={(e) => {
+                              const current = settings?.hidden_widgets ?? [];
+                              const next = e.target.checked
+                                ? current.filter((k) => k !== widget.key)
+                                : [...current, widget.key];
+                              upsertMutation.mutate({ hidden_widgets: next });
+                            }}
+                          />
+                          {widget.label}
+                        </label>
+                      );
+                    })}
+                    <p className="text-xs text-muted-foreground">
+                      O calendário mensal é fixo — não dá pra esconder, é o núcleo da tela.
+                    </p>
+                  </div>
+
                   <div className="grid gap-2">
                     <div className="flex flex-wrap gap-2">
                       <Button onClick={() => void exportCsv()}>Exportar meus dados (CSV)</Button>

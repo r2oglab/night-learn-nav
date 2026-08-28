@@ -8,7 +8,7 @@ export const getUserSettings = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("user_settings")
       .select(
-        "user_id,daily_goal,desired_retention,last_review_date,streak,display_name,avatar_url,daily_limit,daily_new_limit,ui_scale,theme,accent_hue",
+        "user_id,daily_goal,desired_retention,last_review_date,streak,display_name,avatar_url,daily_limit,daily_new_limit,ui_scale,theme,accent_hue,hidden_widgets",
       )
       .eq("user_id", context.userId)
       .maybeSingle();
@@ -27,6 +27,7 @@ export const getUserSettings = createServerFn({ method: "GET" })
         ui_scale: null as number | null,
         theme: null as string | null,
         accent_hue: null as number | null,
+        hidden_widgets: [] as string[],
       };
     }
     return data;
@@ -44,6 +45,7 @@ export const upsertUserSettings = createServerFn({ method: "POST" })
       ui_scale?: number | null;
       theme?: string | null;
       accent_hue?: number | null;
+      hidden_widgets?: string[];
       display_name?: string;
       avatar_url?: string;
     }) => {
@@ -68,6 +70,8 @@ export const upsertUserSettings = createServerFn({ method: "POST" })
       if (input.accent_hue === null) out.accent_hue = null;
       else if (typeof input.accent_hue === "number")
         out.accent_hue = ((Math.round(input.accent_hue) % 360) + 360) % 360;
+      if (Array.isArray(input.hidden_widgets))
+        out.hidden_widgets = Array.from(new Set(input.hidden_widgets.filter(Boolean)));
       if (typeof input.display_name === "string")
         out.display_name = input.display_name.trim() || null;
       if (typeof input.avatar_url === "string") out.avatar_url = input.avatar_url.trim() || null;
@@ -83,6 +87,7 @@ export const upsertUserSettings = createServerFn({ method: "POST" })
     if (data.ui_scale !== undefined) payload.ui_scale = data.ui_scale;
     if (data.theme !== undefined) payload.theme = data.theme;
     if (data.accent_hue !== undefined) payload.accent_hue = data.accent_hue;
+    if (data.hidden_widgets !== undefined) payload.hidden_widgets = data.hidden_widgets;
     if (data.display_name !== undefined) payload.display_name = data.display_name;
     if (data.avatar_url !== undefined) payload.avatar_url = data.avatar_url;
     if (data.streak !== undefined) payload.streak = data.streak;

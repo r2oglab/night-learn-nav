@@ -13,6 +13,7 @@ import { capitalizeFirst, cn } from "@/lib/utils";
 import { listDecks } from "@/lib/decks.functions";
 import { getHeatmapData } from "@/lib/cards.functions";
 import { getTodayFocus } from "@/lib/dashboard.functions";
+import { getUserSettings } from "@/lib/user_settings.functions";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -93,6 +94,13 @@ function Index() {
     queryFn: () => fetchTodayFocus({ data: { tz_offset_minutes: new Date().getTimezoneOffset() } }),
   });
 
+  const fetchSettings = useServerFn(getUserSettings);
+  const { data: settings } = useQuery({
+    queryKey: ["user_settings"],
+    queryFn: () => fetchSettings(),
+  });
+  const hiddenWidgets = settings?.hidden_widgets ?? [];
+
   const fetchHeatmapData = useServerFn(getHeatmapData);
 
   const [showOthersDay, setShowOthersDay] = useState<number | null>(null);
@@ -109,6 +117,7 @@ function Index() {
         .from("cards")
         .select("id, deck_id, pergunta, resposta, due, state, last_review, decks(name)")
         .eq("suspended", false)
+        .is("deleted_at", null)
         .gte("due", start)
         .lte("due", end)
         .order("due", { ascending: true });
@@ -118,6 +127,7 @@ function Index() {
       const { data: reviewData, error: reviewError } = await supabase
         .from("cards")
         .select("id, deck_id, pergunta, resposta, last_review, decks(name)")
+        .is("deleted_at", null)
         .not("last_review", "is", null)
         .gte("last_review", start)
         .lte("last_review", end)
@@ -270,6 +280,7 @@ function Index() {
         // Suspended cards are deliberately parked; counting them here would
         // nag about work the review queue won't even offer.
         .eq("suspended", false)
+        .is("deleted_at", null)
         .lt("due", heatEndISO);
       if (error) throw error;
       return count ?? 0;
@@ -295,6 +306,7 @@ function Index() {
         .from("cards")
         .select("due")
         .eq("suspended", false)
+        .is("deleted_at", null)
         .lt("due", horizonISO);
       if (error) throw error;
 
@@ -343,48 +355,52 @@ function Index() {
 
             <main className="flex flex-1 justify-center p-3 sm:p-6">
               <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
-                {todayFocus && (todayFocus.dueCount > 0 || todayFocus.leechCount > 0) && (
-                  <div className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
-                    <h2 className="mb-2 text-sm font-medium text-muted-foreground">Foco de hoje</h2>
-                    <div className="flex flex-wrap items-center gap-3">
-                      {todayFocus.dueCount > 0 && (
-                        <p className="text-base">
-                          <span className="font-semibold">{todayFocus.dueCount}</span> card(s)
-                          pendente(s)
-                          {todayFocus.nearestExam && (
-                            <>
-                              {" — foque em "}
-                              <span className="font-semibold">
-                                {todayFocus.nearestExam.deckName}
-                              </span>
-                              {" ("}
-                              {todayFocus.nearestExam.dueCount} pendente(s), prova em{" "}
-                              {Math.max(
-                                0,
-                                Math.ceil(
-                                  (new Date(
-                                    `${todayFocus.nearestExam.examDate}T00:00:00`,
-                                  ).getTime() -
-                                    Date.now()) /
-                                    (1000 * 60 * 60 * 24),
-                                ),
-                              )}
-                              d)
-                            </>
-                          )}
-                        </p>
-                      )}
-                      {todayFocus.leechCount > 0 && (
-                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
-                          {todayFocus.leechCount} leech(es) na fila
-                        </span>
-                      )}
-                      <Link to="/revisoes" className="ml-auto">
-                        <Button size="sm">Estudar agora</Button>
-                      </Link>
+                {!hiddenWidgets.includes("foco") &&
+                  todayFocus &&
+                  (todayFocus.dueCount > 0 || todayFocus.leechCount > 0) && (
+                    <div className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
+                      <h2 className="mb-2 text-sm font-medium text-muted-foreground">
+                        Foco de hoje
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-3">
+                        {todayFocus.dueCount > 0 && (
+                          <p className="text-base">
+                            <span className="font-semibold">{todayFocus.dueCount}</span> card(s)
+                            pendente(s)
+                            {todayFocus.nearestExam && (
+                              <>
+                                {" — foque em "}
+                                <span className="font-semibold">
+                                  {todayFocus.nearestExam.deckName}
+                                </span>
+                                {" ("}
+                                {todayFocus.nearestExam.dueCount} pendente(s), prova em{" "}
+                                {Math.max(
+                                  0,
+                                  Math.ceil(
+                                    (new Date(
+                                      `${todayFocus.nearestExam.examDate}T00:00:00`,
+                                    ).getTime() -
+                                      Date.now()) /
+                                      (1000 * 60 * 60 * 24),
+                                  ),
+                                )}
+                                d)
+                              </>
+                            )}
+                          </p>
+                        )}
+                        {todayFocus.leechCount > 0 && (
+                          <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
+                            {todayFocus.leechCount} leech(es) na fila
+                          </span>
+                        )}
+                        <Link to="/revisoes" className="ml-auto">
+                          <Button size="sm">Estudar agora</Button>
+                        </Link>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 <div className="mb-4 flex items-center gap-3">
                   <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
@@ -654,40 +670,42 @@ function Index() {
                 </div>
 
                 {/* Upcoming workload: helps plan around exam weeks. */}
-                <div className="mt-4 rounded-xl border border-border bg-card p-4">
-                  <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
-                  {forecast.every((d) => d.count === 0) ? (
-                    <p className="text-sm text-muted-foreground">
-                      Nada agendado para os próximos 14 dias.
-                    </p>
-                  ) : (
-                    <div className="flex items-end gap-1 overflow-x-auto">
-                      {forecast.map((day) => (
-                        <div
-                          key={day.date}
-                          className="flex min-w-[38px] flex-1 flex-col items-center gap-1"
-                          title={`${day.count} card(s)`}
-                        >
-                          <span className="text-[10px] text-muted-foreground">
-                            {day.count > 0 ? day.count : ""}
-                          </span>
+                {!hiddenWidgets.includes("previsao") && (
+                  <div className="mt-4 rounded-xl border border-border bg-card p-4">
+                    <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
+                    {forecast.every((d) => d.count === 0) ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nada agendado para os próximos 14 dias.
+                      </p>
+                    ) : (
+                      <div className="flex items-end gap-1 overflow-x-auto">
+                        {forecast.map((day) => (
                           <div
-                            className={cn(
-                              "w-full rounded-t",
-                              day.count > 0 ? "bg-primary" : "bg-muted",
-                            )}
-                            style={{
-                              height: `${Math.max(day.count > 0 ? 6 : 2, (day.count / forecastMax) * 80)}px`,
-                            }}
-                          />
-                          <span className="whitespace-nowrap text-[10px] text-muted-foreground">
-                            {day.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                            key={day.date}
+                            className="flex min-w-[38px] flex-1 flex-col items-center gap-1"
+                            title={`${day.count} card(s)`}
+                          >
+                            <span className="text-[10px] text-muted-foreground">
+                              {day.count > 0 ? day.count : ""}
+                            </span>
+                            <div
+                              className={cn(
+                                "w-full rounded-t",
+                                day.count > 0 ? "bg-primary" : "bg-muted",
+                              )}
+                              style={{
+                                height: `${Math.max(day.count > 0 ? 6 : 2, (day.count / forecastMax) * 80)}px`,
+                              }}
+                            />
+                            <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                              {day.label}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </main>
           </div>

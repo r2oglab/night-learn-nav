@@ -216,6 +216,85 @@ export const generateCardsFromText = createServerFn({ method: "POST" })
     return { cards };
   });
 
+const SUGGEST_MISSING_SYSTEM = `Você ajuda um estudante de medicina a achar lacunas no material de estudo dele, em português do Brasil.
+
+Vai receber um texto-fonte (objetivos, slides, roteiro de PBL) e a lista de perguntas dos flashcards que ele já tem sobre esse assunto.
+
+Sua tarefa: aponte só os pontos do texto-fonte que NÃO estão cobertos por nenhum flashcard existente, mesmo que a redação da pergunta exista seja diferente — o que importa é se o CONTEÚDO já está coberto. Para cada ponto faltante, sugira um flashcard novo.
+
+Regras:
+- Não repita nada que já tenha flashcard equivalente.
+- Cada sugestão testa UM fato ou conceito.
+- Se o material já está bem coberto, devolva uma lista vazia — não invente lacunas pra preencher espaço.
+
+Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
+[{"ponto": "...", "pergunta": "...", "resposta": "..."}]`;
+
+export const suggestMissingCards = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { deck_id: string; text: string }) => {
+    const text = input.text?.trim();
+    if (!input.deck_id?.trim()) throw new Error("Escolha um deck pra comparar.");
+    if (!text) throw new Error("Cole o material (objetivos, slides...) pra comparar.");
+    if (text.length < 40) throw new Error("O texto é curto demais.");
+    if (text.length > 20000) throw new Error("Texto muito longo. Divida em partes menores.");
+    return { deck_id: input.deck_id, text };
+  })
+  .handler(async ({ data, context }) => {
+    // Cards live in subdecks (Imunologia::Problema 4::...), so comparing
+    // against the chosen deck alone would miss most of what already exists
+    // and suggest duplicates. Walk the whole subtree instead.
+    const { data: allDecks } = await context.supabase
+      .from("decks")
+      .select("id,parent_id")
+      .eq("user_id", context.userId);
+
+    const childrenOf = new Map<string, string[]>();
+    for (const d of allDecks ?? []) {
+      if (!d.parent_id) continue;
+      childrenOf.set(d.parent_id, [...(childrenOf.get(d.parent_id) ?? []), d.id]);
+    }
+    const deckIds: string[] = [];
+    const stack = [data.deck_id];
+    while (stack.length > 0) {
+      const id = stack.pop();
+      if (!id || deckIds.includes(id)) continue;
+      deckIds.push(id);
+      stack.push(...(childrenOf.get(id) ?? []));
+    }
+
+    const { data: existing, error } = await context.supabase
+      .from("cards")
+      .select("pergunta")
+      .in("deck_id", deckIds)
+      .eq("user_id", context.userId)
+      .is("deleted_at", null);
+    if (error) throw new Error(error.message);
+
+    const existingQuestions =
+      (existing ?? []).map((c) => `- ${c.pergunta}`).join("\n") || "(nenhum card ainda neste deck)";
+
+    const raw = await callAi(
+      SUGGEST_MISSING_SYSTEM,
+      `Texto-fonte:\n---\n${data.text}\n---\n\nFlashcards que já existem neste deck:\n${existingQuestions}`,
+      6000,
+    );
+
+    const items = parseJsonArray(raw);
+    const suggestions = items
+      .map((item) => {
+        const obj = item as Record<string, unknown>;
+        return {
+          ponto: String(obj["ponto"] ?? "").trim(),
+          pergunta: String(obj["pergunta"] ?? "").trim(),
+          resposta: String(obj["resposta"] ?? "").trim(),
+        };
+      })
+      .filter((s) => s.pergunta && s.resposta);
+
+    return { suggestions };
+  });
+
 const EXPLAIN_SYSTEM = `Você explica conceitos para um estudante de medicina, em português do Brasil.
 
 Escreva uma explicação curta (no máximo 3 parágrafos) que ajude a ENTENDER, não apenas decorar:
