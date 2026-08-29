@@ -242,7 +242,6 @@ function CriacaoPage() {
       tz_offset_minutes: number;
     }) => addCard({ data: vars }),
     onSuccess: () => {
-      setDeckPath("");
       setQuestion("");
       setAnswer("");
       setTags([]);
@@ -483,7 +482,6 @@ function CriacaoPage() {
       });
 
       const count = regions.length;
-      setDeckPath("");
       setOcclusionFile(null);
       setOcclusionImageUrl(null);
       setRegions([]);
@@ -623,7 +621,6 @@ function CriacaoPage() {
                           },
                         });
                       }
-                      setDeckPath("");
                       setClozeText("");
                       setHiddenTokens(new Set());
                       setTags([]);

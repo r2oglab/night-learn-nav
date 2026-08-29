@@ -24,6 +24,7 @@ import {
   Star,
   ArrowUp,
   ArrowDown,
+  FolderPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +41,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import {
   listDecks,
+  createDeck,
   deleteDeck,
   updateDeck,
   setDeckPinned,
@@ -288,6 +290,16 @@ function FlashcardsPage() {
       void queryClient.invalidateQueries({ queryKey: ["trashedDecks"] });
       void queryClient.invalidateQueries({ queryKey: ["trashedCards"] });
       toast.success("Deck excluído permanentemente");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const createDeckServer = useServerFn(createDeck);
+  const createDeckMutation = useMutation({
+    mutationFn: (path: string) => createDeckServer({ data: { path } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      toast.success("Deck criado");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -1269,6 +1281,22 @@ function FlashcardsPage() {
                   size="icon"
                   variant="ghost"
                   className="size-7"
+                  title="Criar subdeck aqui dentro"
+                  disabled={createDeckMutation.isPending}
+                  onClick={() => {
+                    const name = window.prompt(`Nome da subdeck dentro de "${deck.name}":`);
+                    if (name?.trim()) {
+                      createDeckMutation.mutate(`${getPath(deck.id)}::${name.trim()}`);
+                    }
+                  }}
+                >
+                  <FolderPlus className="size-3.5" />
+                  <span className="sr-only">Criar subdeck</span>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
                   title={deck.pinned ? "Desafixar" : "Fixar no topo"}
                   disabled={pinDeckMutation.isPending}
                   onClick={() => pinDeckMutation.mutate({ id: deck.id, pinned: !deck.pinned })}
@@ -1429,28 +1457,43 @@ function FlashcardsPage() {
                   }}
                 />
               )}
-              <div className="mb-3 flex items-center justify-end gap-2">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <Button
                   size="sm"
-                  variant={selectionMode ? "default" : "outline"}
-                  onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+                  variant="outline"
+                  disabled={createDeckMutation.isPending}
+                  onClick={() => {
+                    const name = window.prompt(
+                      "Nome do novo deck (use :: pra criar como subdeck de outro, ex: Módulo::Assunto):",
+                    );
+                    if (name?.trim()) createDeckMutation.mutate(name.trim());
+                  }}
                 >
-                  {selectionMode ? "Cancelar seleção" : "Selecionar"}
+                  + Novo deck
                 </Button>
-                <Button
-                  size="sm"
-                  variant={showTrash ? "default" : "outline"}
-                  onClick={() => setShowTrash((v) => !v)}
-                >
-                  {showTrash ? "Voltar" : "Lixeira"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant={showFindReplace ? "default" : "outline"}
-                  onClick={() => setShowFindReplace((v) => !v)}
-                >
-                  {showFindReplace ? "Fechar busca/substituição" : "Buscar e substituir"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={selectionMode ? "default" : "outline"}
+                    onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+                  >
+                    {selectionMode ? "Cancelar seleção" : "Selecionar"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={showTrash ? "default" : "outline"}
+                    onClick={() => setShowTrash((v) => !v)}
+                  >
+                    {showTrash ? "Voltar" : "Lixeira"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={showFindReplace ? "default" : "outline"}
+                    onClick={() => setShowFindReplace((v) => !v)}
+                  >
+                    {showFindReplace ? "Fechar busca/substituição" : "Buscar e substituir"}
+                  </Button>
+                </div>
               </div>
               {showFindReplace && (
                 <div className="mb-3 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
