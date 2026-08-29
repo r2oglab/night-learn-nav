@@ -281,7 +281,9 @@ const TRASH_AUTO_PURGE_DAYS = 30;
 
 /** Lists trashed cards, and lazily hard-deletes anything past the purge
  * window first — a lightweight sweep instead of a scheduled job, since
- * there's no cron infra in this app. */
+ * there's no cron infra in this app. Also purges expired trashed decks:
+ * at 30 days a deck's own cascade is fine to let run, since anything still
+ * under it is overdue for real deletion anyway. */
 export const listTrashedCards = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -301,6 +303,24 @@ export const listTrashedCards = createServerFn({ method: "GET" })
         context.supabase,
         expired.map((c: { image_url: string | null }) => c.image_url),
       );
+    }
+
+    const { data: expiredDecks } = await context.supabase
+      .from("decks")
+      .select("id")
+      .eq("user_id", context.userId)
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", cutoff);
+
+    if (expiredDecks && expiredDecks.length > 0) {
+      await context.supabase
+        .from("decks")
+        .delete()
+        .in(
+          "id",
+          expiredDecks.map((d: { id: string }) => d.id),
+        )
+        .eq("user_id", context.userId);
     }
 
     const { data, error } = await context.supabase

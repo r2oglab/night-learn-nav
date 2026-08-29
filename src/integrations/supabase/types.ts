@@ -153,6 +153,7 @@ export type Database = {
           pinned: boolean;
           exam_date: string | null;
           daily_new_limit: number | null;
+          deleted_at: string | null;
         };
         Insert: {
           created_at?: string;
@@ -165,6 +166,7 @@ export type Database = {
           pinned?: boolean;
           exam_date?: string | null;
           daily_new_limit?: number | null;
+          deleted_at?: string | null;
         };
         Update: {
           created_at?: string;
@@ -177,6 +179,7 @@ export type Database = {
           pinned?: boolean;
           exam_date?: string | null;
           daily_new_limit?: number | null;
+          deleted_at?: string | null;
         };
         Relationships: [
           {
