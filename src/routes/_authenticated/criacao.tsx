@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
 import { generateCardsFromText, suggestMissingCards } from "@/lib/ai.functions";
+import { extractTextFromFile } from "@/lib/file-text-extract";
 import { Textarea } from "@/components/ui/textarea";
 import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -155,6 +156,24 @@ function CriacaoPage() {
 
   const runSuggestMissing = useServerFn(suggestMissingCards);
   const [suggestMissingMode, setSuggestMissingMode] = useState(false);
+  const [extractingFile, setExtractingFile] = useState(false);
+
+  async function handleAiFileUpload(file: File) {
+    setExtractingFile(true);
+    try {
+      const { text, truncated } = await extractTextFromFile(file);
+      setAiSource(text);
+      toast.success(
+        truncated
+          ? `Texto de "${file.name}" carregado (cortado — arquivo muito longo).`
+          : `Texto de "${file.name}" carregado.`,
+      );
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExtractingFile(false);
+    }
+  }
 
   async function handleGenerate() {
     setGenerating(true);
@@ -738,6 +757,27 @@ function CriacaoPage() {
                             placeholder="Cole aqui o texto que deve virar flashcards..."
                             className="min-h-40"
                           />
+                          <span className="text-xs">
+                            Ou{" "}
+                            <label className="cursor-pointer text-sky-400 underline underline-offset-2 hover:text-sky-300">
+                              {extractingFile
+                                ? "lendo arquivo..."
+                                : "envie um arquivo (.docx ou .txt)"}
+                              <input
+                                type="file"
+                                accept=".docx,.txt,.md"
+                                className="hidden"
+                                disabled={extractingFile}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = "";
+                                  if (file) void handleAiFileUpload(file);
+                                }}
+                              />
+                            </label>{" "}
+                            — o texto extraído substitui o que estiver colado aqui, pra você
+                            conferir/editar antes de gerar.
+                          </span>
                         </label>
                         {!suggestMissingMode && (
                           <div className="flex flex-wrap items-center gap-2 text-sm">
