@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { buildDeckTree, type DeckRow } from "./deck-tree";
+import { cleanupOrphanedCardImages } from "@/lib/card-images";
 
 export const listDecks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -127,6 +128,127 @@ export const deleteDeck = createServerFn({ method: "POST" })
       .eq("user_id", context.userId)
       .is("deleted_at", null);
     if (cardsError) throw new Error(cardsError.message);
+
+    return { ok: true };
+  });
+
+/** Trashed decks, most recently deleted first. Piggybacks on the same
+ * 30-day sweep that already runs from listTrashedCards — no separate purge
+ * job needed. */
+export const listTrashedDecks = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: expired } = await context.supabase
+      .from("decks")
+      .select("id")
+      .eq("user_id", context.userId)
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", cutoff);
+
+    if (expired && expired.length > 0) {
+      await context.supabase
+        .from("decks")
+        .delete()
+        .in(
+          "id",
+          expired.map((d: { id: string }) => d.id),
+        )
+        .eq("user_id", context.userId);
+    }
+
+    const { data, error } = await context.supabase
+      .from("decks")
+      .select("*")
+      .eq("user_id", context.userId)
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as DeckRow[];
+  });
+
+/** Restores a deck, plus only the cards trashed in the exact same batch —
+ * matched by an identical deleted_at timestamp, which deleteDeck sets on
+ * both together. Cards that were already in the trash on their own, before
+ * the deck was deleted, are left alone: restoring the deck shouldn't
+ * resurrect something the person deliberately trashed earlier. */
+export const restoreDeck = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string }) => {
+    if (!input.id?.trim()) throw new Error("ID do deck inválido.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const { data: deck, error: fetchError } = await context.supabase
+      .from("decks")
+      .select("deleted_at")
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .single();
+    if (fetchError) throw new Error(fetchError.message);
+    if (!deck?.deleted_at) throw new Error("Deck não está na lixeira.");
+
+    const { error: deckError } = await context.supabase
+      .from("decks")
+      .update({ deleted_at: null })
+      .eq("id", data.id)
+      .eq("user_id", context.userId);
+    if (deckError) throw new Error(deckError.message);
+
+    const { error: cardsError } = await context.supabase
+      .from("cards")
+      .update({ deleted_at: null })
+      .eq("deck_id", data.id)
+      .eq("user_id", context.userId)
+      .eq("deleted_at", deck.deleted_at);
+    if (cardsError) throw new Error(cardsError.message);
+
+    return { ok: true };
+  });
+
+/** Real deletion — only reachable from the deck trash view. Both FKs
+ * (decks.parent_id and cards.deck_id) cascade, so deleting just the root
+ * here still correctly removes the whole subdeck/card subtree; only the
+ * image cleanup needs the descendant ids collected by hand. */
+export const permanentlyDeleteDeck = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string }) => {
+    if (!input.id?.trim()) throw new Error("ID do deck inválido.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const { data: allDecks } = await context.supabase
+      .from("decks")
+      .select("id,parent_id")
+      .eq("user_id", context.userId);
+
+    const descendantIds: string[] = [];
+    const collect = (parentId: string) => {
+      descendantIds.push(parentId);
+      for (const d of allDecks ?? []) {
+        if (d.parent_id === parentId) collect(d.id);
+      }
+    };
+    collect(data.id);
+
+    const { data: doomedCards } = await context.supabase
+      .from("cards")
+      .select("image_url")
+      .in("deck_id", descendantIds)
+      .not("image_url", "is", null);
+
+    const { error } = await context.supabase
+      .from("decks")
+      .delete()
+      .eq("id", data.id)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+
+    await cleanupOrphanedCardImages(
+      context.supabase,
+      (doomedCards ?? []).map((c: { image_url: string | null }) => c.image_url),
+    );
 
     return { ok: true };
   });

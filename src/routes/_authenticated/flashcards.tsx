@@ -44,6 +44,9 @@ import {
   updateDeck,
   setDeckPinned,
   reorderDecks,
+  listTrashedDecks,
+  restoreDeck,
+  permanentlyDeleteDeck,
 } from "@/lib/decks.functions";
 import { compareDecks } from "@/lib/deck-tree";
 import {
@@ -258,13 +261,46 @@ function FlashcardsPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const fetchTrashedDecks = useServerFn(listTrashedDecks);
+  const { data: trashedDecks = [], isLoading: trashedDecksLoading } = useQuery({
+    queryKey: ["trashedDecks"],
+    queryFn: () => fetchTrashedDecks(),
+    enabled: showTrash,
+  });
+
+  const restoreDeckServer = useServerFn(restoreDeck);
+  const restoreDeckMutation = useMutation({
+    mutationFn: (id: string) => restoreDeckServer({ data: { id } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      void queryClient.invalidateQueries({ queryKey: ["trashedDecks"] });
+      void queryClient.invalidateQueries({ queryKey: ["trashedCards"] });
+      toast.success("Deck restaurado");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const permanentDeleteDeckServer = useServerFn(permanentlyDeleteDeck);
+  const permanentDeleteDeckMutation = useMutation({
+    mutationFn: (id: string) => permanentDeleteDeckServer({ data: { id } }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["trashedDecks"] });
+      void queryClient.invalidateQueries({ queryKey: ["trashedCards"] });
+      toast.success("Deck excluído permanentemente");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const removeDeckServer = useServerFn(deleteDeck);
   const removeDeck = useMutation({
     mutationFn: (id: string) => removeDeckServer({ data: { id } }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
-      toast.success("Deck excluído");
+      void queryClient.invalidateQueries({ queryKey: ["trashedDecks"] });
+      void queryClient.invalidateQueries({ queryKey: ["trashedCards"] });
+      toast.success("Deck movido para a lixeira");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -1502,16 +1538,70 @@ function FlashcardsPage() {
               {showTrash ? (
                 <div className="space-y-3">
                   <p className="text-xs text-muted-foreground">
-                    Cards excluídos ficam aqui por 30 dias antes de sumir de vez.
+                    Decks e cards excluídos ficam aqui por 30 dias antes de sumir de vez. Restaurar
+                    um deck também restaura os cards que foram junto com ele — cards que já estavam
+                    na lixeira antes disso continuam lá.
                   </p>
+                  {trashedDecksLoading ? (
+                    <div className="flex justify-center py-6">
+                      <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : trashedDecks.length > 0 ? (
+                    <ul className="space-y-3 rounded-xl border border-border bg-card p-3">
+                      {trashedDecks.map((deck) => (
+                        <li
+                          key={deck.id}
+                          className="flex items-center justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <BookOpen className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="truncate font-medium" title={deck.name}>
+                              {deck.name}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-7"
+                              title="Restaurar deck"
+                              disabled={restoreDeckMutation.isPending}
+                              onClick={() => restoreDeckMutation.mutate(deck.id)}
+                            >
+                              <Undo2 className="size-3.5" />
+                              <span className="sr-only">Restaurar deck</span>
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              title="Excluir permanentemente"
+                              disabled={permanentDeleteDeckMutation.isPending}
+                              onClick={() => {
+                                const ok = window.confirm(
+                                  `Excluir "${deck.name}" e todos os cards dele permanentemente? Isso não pode ser desfeito.`,
+                                );
+                                if (ok) permanentDeleteDeckMutation.mutate(deck.id);
+                              }}
+                            >
+                              <Trash2 className="size-3.5" />
+                              <span className="sr-only">Excluir permanentemente</span>
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                   {trashLoading ? (
                     <div className="flex justify-center py-12">
                       <Loader2 className="size-5 animate-spin text-muted-foreground" />
                     </div>
                   ) : trashedCards.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                      Lixeira vazia.
-                    </p>
+                    trashedDecks.length === 0 && (
+                      <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                        Lixeira vazia.
+                      </p>
+                    )
                   ) : (
                     <ul className="space-y-3 rounded-xl border border-border bg-card p-3">
                       {trashedCards.map((card) => (
