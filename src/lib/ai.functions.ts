@@ -33,22 +33,25 @@ type GeminiPart = { text?: string };
  * usually brief, so callAi() retries once before giving up. */
 class AiOverloadedError extends Error {}
 
+function geminiHttpError(response: Response, detail: string): Error {
+  // 429 on the free tier means the daily/minute quota ran out.
+  if (response.status === 429) {
+    return new Error("Limite gratuito da IA atingido. Tente de novo mais tarde.");
+  }
+  if (response.status === 404) {
+    return new Error(
+      `Modelo "${GEMINI_MODEL}" indisponível para esta conta. Ajuste o secret GEMINI_MODEL para um modelo atual.`,
+    );
+  }
+  if (response.status === 503) {
+    return new AiOverloadedError(detail.slice(0, 200));
+  }
+  return new Error(`Falha na chamada da IA (${response.status}). ${detail.slice(0, 200)}`);
+}
+
 async function parseGeminiResponse(response: Response): Promise<string> {
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    // 429 on the free tier means the daily/minute quota ran out.
-    if (response.status === 429) {
-      throw new Error("Limite gratuito da IA atingido. Tente de novo mais tarde.");
-    }
-    if (response.status === 404) {
-      throw new Error(
-        `Modelo "${GEMINI_MODEL}" indisponível para esta conta. Ajuste o secret GEMINI_MODEL para um modelo atual.`,
-      );
-    }
-    if (response.status === 503) {
-      throw new AiOverloadedError(detail.slice(0, 200));
-    }
-    throw new Error(`Falha na chamada da IA (${response.status}). ${detail.slice(0, 200)}`);
+    throw geminiHttpError(response, await response.text().catch(() => ""));
   }
 
   const data = (await response.json()) as {
@@ -60,6 +63,28 @@ async function parseGeminiResponse(response: Response): Promise<string> {
     .trim();
   if (!text) throw new Error("A IA não retornou conteúdo.");
   return text;
+}
+
+/** Same as parseGeminiResponse, but also reports whether the response was
+ * cut short by the token cap — worth surfacing to the person instead of
+ * silently handing back a partial transcription as if it were complete. */
+async function parseGeminiFileResponse(
+  response: Response,
+): Promise<{ text: string; truncated: boolean }> {
+  if (!response.ok) {
+    throw geminiHttpError(response, await response.text().catch(() => ""));
+  }
+
+  const data = (await response.json()) as {
+    candidates?: { content?: { parts?: GeminiPart[] }; finishReason?: string }[];
+  };
+  const candidate = data.candidates?.[0];
+  const text = (candidate?.content?.parts ?? [])
+    .map((p) => p.text ?? "")
+    .join("\n")
+    .trim();
+  if (!text) throw new Error("A IA não retornou conteúdo.");
+  return { text, truncated: candidate?.finishReason === "MAX_TOKENS" };
 }
 
 async function callGemini(
@@ -96,7 +121,7 @@ async function callGeminiWithFile(
   fileBase64: string,
   mimeType: string,
   maxTokens: number,
-): Promise<string> {
+): Promise<{ text: string; truncated: boolean }> {
   const response = await fetch(`${GEMINI_URL}/${GEMINI_MODEL}:generateContent`, {
     method: "POST",
     headers: {
@@ -114,7 +139,7 @@ async function callGeminiWithFile(
       generationConfig: { maxOutputTokens: maxTokens },
     }),
   });
-  return parseGeminiResponse(response);
+  return parseGeminiFileResponse(response);
 }
 
 async function parseAnthropicResponse(response: Response): Promise<string> {
@@ -134,6 +159,29 @@ async function parseAnthropicResponse(response: Response): Promise<string> {
     .trim();
   if (!text) throw new Error("A IA não retornou conteúdo.");
   return text;
+}
+
+/** Same as parseAnthropicResponse, but also reports whether stop_reason
+ * says the response was cut short by the token cap. */
+async function parseAnthropicFileResponse(
+  response: Response,
+): Promise<{ text: string; truncated: boolean }> {
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    if (response.status === 503) {
+      throw new AiOverloadedError(detail.slice(0, 200));
+    }
+    throw new Error(`Falha na chamada da IA (${response.status}). ${detail.slice(0, 200)}`);
+  }
+
+  const data = (await response.json()) as { content?: AnthropicBlock[]; stop_reason?: string };
+  const text = (data.content ?? [])
+    .filter((b) => b.type === "text")
+    .map((b) => b.text ?? "")
+    .join("\n")
+    .trim();
+  if (!text) throw new Error("A IA não retornou conteúdo.");
+  return { text, truncated: data.stop_reason === "max_tokens" };
 }
 
 async function callAnthropic(
@@ -169,7 +217,7 @@ async function callAnthropicWithFile(
   fileBase64: string,
   mimeType: string,
   maxTokens: number,
-): Promise<string> {
+): Promise<{ text: string; truncated: boolean }> {
   const fileBlock =
     mimeType === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: mimeType, data: fileBase64 } }
@@ -191,12 +239,12 @@ async function callAnthropicWithFile(
       messages: [{ role: "user", content: [fileBlock, { type: "text", text: user }] }],
     }),
   });
-  return parseAnthropicResponse(response);
+  return parseAnthropicFileResponse(response);
 }
 
 /** The provider's own 503 message says these spikes are usually brief —
  * worth one short wait-and-retry before bothering the person with it. */
-async function withOverloadRetry(attempt: () => Promise<string>): Promise<string> {
+async function withOverloadRetry<T>(attempt: () => Promise<T>): Promise<T> {
   try {
     return await attempt();
   } catch (err) {
@@ -234,7 +282,7 @@ async function callAiWithFile(
   fileBase64: string,
   mimeType: string,
   maxTokens: number,
-): Promise<string> {
+): Promise<{ text: string; truncated: boolean }> {
   const geminiKey = process.env["GEMINI_API_KEY"] ?? process.env["GOOGLE_API_KEY"];
   const anthropicKey = process.env["ANTHROPIC_API_KEY"];
   const attempt = geminiKey
@@ -323,14 +371,18 @@ export const transcribeFile = createServerFn({ method: "POST" })
     return { fileBase64, mimeType };
   })
   .handler(async ({ data }) => {
-    const text = await callAiWithFile(
+    const { text, truncated } = await callAiWithFile(
       TRANSCRIBE_SYSTEM,
       "Transcreva o conteúdo deste arquivo.",
       data.fileBase64,
       data.mimeType,
-      8000,
+      // Gemini 3.6 Flash allows up to 65,536; Claude Sonnet 5 up to
+      // 128,000. 32,000 leaves generous room under both — a 41-slide deck
+      // with detailed diagram descriptions got cut off at 8,000, which is
+      // what this replaces.
+      32000,
     );
-    return { text };
+    return { text, truncated };
   });
 
 export const generateCardsFromText = createServerFn({ method: "POST" })

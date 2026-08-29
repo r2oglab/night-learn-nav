@@ -183,7 +183,13 @@ function CriacaoPage() {
           data: { file_base64: fileBase64, file_name: file.name },
         });
         setAiSource(result.text);
-        toast.success(`"${file.name}" transcrito. Confira o texto antes de gerar os cards.`);
+        if (result.truncated) {
+          toast.warning(
+            `"${file.name}" é grande demais — a transcrição foi cortada no meio. Falta conteúdo do fim do arquivo; considere dividir em partes menores.`,
+          );
+        } else {
+          toast.success(`"${file.name}" transcrito. Confira o texto antes de gerar os cards.`);
+        }
         return;
       }
 
