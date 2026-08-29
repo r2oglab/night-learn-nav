@@ -33,28 +33,7 @@ type GeminiPart = { text?: string };
  * usually brief, so callAi() retries once before giving up. */
 class AiOverloadedError extends Error {}
 
-async function callGemini(
-  apiKey: string,
-  system: string,
-  user: string,
-  maxTokens: number,
-): Promise<string> {
-  const response = await fetch(`${GEMINI_URL}/${GEMINI_MODEL}:generateContent`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      // Key goes in a header rather than the query string, so it can't leak
-      // into request logs or proxy history.
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: user }] }],
-      // temperature/top_p/top_k are deprecated on Gemini 3.x — omitted on purpose.
-      generationConfig: { maxOutputTokens: maxTokens },
-    }),
-  });
-
+async function parseGeminiResponse(response: Response): Promise<string> {
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     // 429 on the free tier means the daily/minute quota ran out.
@@ -83,6 +62,80 @@ async function callGemini(
   return text;
 }
 
+async function callGemini(
+  apiKey: string,
+  system: string,
+  user: string,
+  maxTokens: number,
+): Promise<string> {
+  const response = await fetch(`${GEMINI_URL}/${GEMINI_MODEL}:generateContent`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      // Key goes in a header rather than the query string, so it can't leak
+      // into request logs or proxy history.
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: "user", parts: [{ text: user }] }],
+      // temperature/top_p/top_k are deprecated on Gemini 3.x — omitted on purpose.
+      generationConfig: { maxOutputTokens: maxTokens },
+    }),
+  });
+  return parseGeminiResponse(response);
+}
+
+/** Same call, but with a file (image or PDF) attached alongside the text
+ * prompt — Gemini reads it as a genuine image/document, not OCR bolted on
+ * separately, so it can read text inside diagrams and describe figures. */
+async function callGeminiWithFile(
+  apiKey: string,
+  system: string,
+  user: string,
+  fileBase64: string,
+  mimeType: string,
+  maxTokens: number,
+): Promise<string> {
+  const response = await fetch(`${GEMINI_URL}/${GEMINI_MODEL}:generateContent`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [
+        {
+          role: "user",
+          parts: [{ inlineData: { mimeType, data: fileBase64 } }, { text: user }],
+        },
+      ],
+      generationConfig: { maxOutputTokens: maxTokens },
+    }),
+  });
+  return parseGeminiResponse(response);
+}
+
+async function parseAnthropicResponse(response: Response): Promise<string> {
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    if (response.status === 503) {
+      throw new AiOverloadedError(detail.slice(0, 200));
+    }
+    throw new Error(`Falha na chamada da IA (${response.status}). ${detail.slice(0, 200)}`);
+  }
+
+  const data = (await response.json()) as { content?: AnthropicBlock[] };
+  const text = (data.content ?? [])
+    .filter((b) => b.type === "text")
+    .map((b) => b.text ?? "")
+    .join("\n")
+    .trim();
+  if (!text) throw new Error("A IA não retornou conteúdo.");
+  return text;
+}
+
 async function callAnthropic(
   apiKey: string,
   system: string,
@@ -103,24 +156,62 @@ async function callAnthropic(
       messages: [{ role: "user", content: user }],
     }),
   });
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    if (response.status === 503) {
-      throw new AiOverloadedError(detail.slice(0, 200));
-    }
-    throw new Error(`Falha na chamada da IA (${response.status}). ${detail.slice(0, 200)}`);
-  }
-
-  const data = (await response.json()) as { content?: AnthropicBlock[] };
-  const text = (data.content ?? [])
-    .filter((b) => b.type === "text")
-    .map((b) => b.text ?? "")
-    .join("\n")
-    .trim();
-  if (!text) throw new Error("A IA não retornou conteúdo.");
-  return text;
+  return parseAnthropicResponse(response);
 }
+
+/** Same call, with a file (image or PDF) attached. Anthropic reads PDFs
+ * natively as a "document" block (page images + extracted text together),
+ * and any other supported mime type as an "image" block. */
+async function callAnthropicWithFile(
+  apiKey: string,
+  system: string,
+  user: string,
+  fileBase64: string,
+  mimeType: string,
+  maxTokens: number,
+): Promise<string> {
+  const fileBlock =
+    mimeType === "application/pdf"
+      ? { type: "document", source: { type: "base64", media_type: mimeType, data: fileBase64 } }
+      : { type: "image", source: { type: "base64", media_type: mimeType, data: fileBase64 } };
+
+  const response = await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      // PDF input is a beta capability on the Messages API.
+      "anthropic-beta": "pdfs-2024-09-25",
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: [fileBlock, { type: "text", text: user }] }],
+    }),
+  });
+  return parseAnthropicResponse(response);
+}
+
+/** The provider's own 503 message says these spikes are usually brief —
+ * worth one short wait-and-retry before bothering the person with it. */
+async function withOverloadRetry(attempt: () => Promise<string>): Promise<string> {
+  try {
+    return await attempt();
+  } catch (err) {
+    if (!(err instanceof AiOverloadedError)) throw err;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      return await attempt();
+    } catch {
+      throw new Error("A IA está sobrecarregada agora. Tente de novo em alguns segundos.");
+    }
+  }
+}
+
+const NO_KEY_MESSAGE =
+  "Chave da IA não configurada. Defina GEMINI_API_KEY (gratuito em ai.google.dev) nos secrets do servidor.";
 
 /** Route to whichever provider has a key configured; Gemini wins if both. */
 async function callAi(system: string, user: string, maxTokens: number): Promise<string> {
@@ -132,25 +223,28 @@ async function callAi(system: string, user: string, maxTokens: number): Promise<
       ? () => callAnthropic(anthropicKey, system, user, maxTokens)
       : null;
 
-  if (!attempt) {
-    throw new Error(
-      "Chave da IA não configurada. Defina GEMINI_API_KEY (gratuito em ai.google.dev) nos secrets do servidor.",
-    );
-  }
+  if (!attempt) throw new Error(NO_KEY_MESSAGE);
+  return withOverloadRetry(attempt);
+}
 
-  try {
-    return await attempt();
-  } catch (err) {
-    if (!(err instanceof AiOverloadedError)) throw err;
-    // The provider's own message says these spikes are usually brief —
-    // worth one short wait-and-retry before bothering the person with it.
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    try {
-      return await attempt();
-    } catch {
-      throw new Error("A IA está sobrecarregada agora. Tente de novo em alguns segundos.");
-    }
-  }
+/** Same routing as callAi, for a prompt with a file (image/PDF) attached. */
+async function callAiWithFile(
+  system: string,
+  user: string,
+  fileBase64: string,
+  mimeType: string,
+  maxTokens: number,
+): Promise<string> {
+  const geminiKey = process.env["GEMINI_API_KEY"] ?? process.env["GOOGLE_API_KEY"];
+  const anthropicKey = process.env["ANTHROPIC_API_KEY"];
+  const attempt = geminiKey
+    ? () => callGeminiWithFile(geminiKey, system, user, fileBase64, mimeType, maxTokens)
+    : anthropicKey
+      ? () => callAnthropicWithFile(anthropicKey, system, user, fileBase64, mimeType, maxTokens)
+      : null;
+
+  if (!attempt) throw new Error(NO_KEY_MESSAGE);
+  return withOverloadRetry(attempt);
 }
 
 /** Strip ```json fences the model may wrap the answer in. */
@@ -178,6 +272,66 @@ Regras:
 
 Responda APENAS com um array JSON, sem texto antes ou depois, no formato:
 [{"pergunta": "...", "resposta": "..."}]`;
+
+const TRANSCRIBE_SYSTEM = `Você transcreve o conteúdo de slides de aula (PDF ou imagem) para texto estruturado, em português do Brasil, para virar material de estudo depois.
+
+Regras:
+- Transcreva TODO texto visível: títulos, tópicos, texto dentro de diagramas/figuras, legendas, tabelas.
+- Para diagramas e fluxogramas, descreva a estrutura e as relações entre os elementos — não liste só palavras soltas.
+- Preserve termos técnicos exatamente como aparecem, sem traduzir ou simplificar.
+- Organize por slide/página, com um cabeçalho curto indicando a posição (ex: "Slide 3:").
+- Não resuma nem interprete o conteúdo — o objetivo é ter o material completo disponível depois, não uma versão editorializada.
+- Se uma página não tiver texto útil (capa, divisor, imagem decorativa), pule ela sem comentário.
+
+Responda só com a transcrição em si, sem introdução nem comentário seu antes ou depois.`;
+
+const MAX_FILE_BYTES = 15 * 1024 * 1024; // ~15MB raw, comfortably under typical inline-request caps once base64-encoded (~20MB).
+
+const FILE_MIME_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+};
+
+/** Transcribes a slide/lecture file (PDF or image) into plain text via a
+ * vision-capable call — the AI reads it as an actual document/image, so
+ * text inside diagrams and figures comes through too, not just body text.
+ * Returns text meant to land back in the same textarea generateCardsFromText
+ * already reads from, for the person to review before generating cards. */
+export const transcribeFile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { file_base64: string; file_name: string }) => {
+    const fileBase64 = input.file_base64?.trim();
+    if (!fileBase64) throw new Error("Nenhum arquivo enviado.");
+
+    // Rough size check on the base64 string itself (~4/3 the raw bytes) —
+    // good enough to reject something way over the limit before spending a
+    // call on it; the provider enforces the real cap either way.
+    const approxBytes = (fileBase64.length * 3) / 4;
+    if (approxBytes > MAX_FILE_BYTES) {
+      throw new Error("Arquivo grande demais (máx. ~15MB). Divida o PDF em partes menores.");
+    }
+
+    const ext = (input.file_name?.split(".").pop() ?? "").toLowerCase();
+    const mimeType = FILE_MIME_TYPES[ext];
+    if (!mimeType) {
+      throw new Error("Formato não suportado. Envie PDF, PNG, JPG ou WEBP.");
+    }
+
+    return { fileBase64, mimeType };
+  })
+  .handler(async ({ data }) => {
+    const text = await callAiWithFile(
+      TRANSCRIBE_SYSTEM,
+      "Transcreva o conteúdo deste arquivo.",
+      data.fileBase64,
+      data.mimeType,
+      8000,
+    );
+    return { text };
+  });
 
 export const generateCardsFromText = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

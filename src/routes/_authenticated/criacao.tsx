@@ -14,7 +14,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
-import { generateCardsFromText, suggestMissingCards } from "@/lib/ai.functions";
+import { generateCardsFromText, suggestMissingCards, transcribeFile } from "@/lib/ai.functions";
 import { extractTextFromFile } from "@/lib/file-text-extract";
 import { Textarea } from "@/components/ui/textarea";
 import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
@@ -155,12 +155,38 @@ function CriacaoPage() {
   const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
 
   const runSuggestMissing = useServerFn(suggestMissingCards);
+  const runTranscribeFile = useServerFn(transcribeFile);
   const [suggestMissingMode, setSuggestMissingMode] = useState(false);
   const [extractingFile, setExtractingFile] = useState(false);
 
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.slice(result.indexOf(",") + 1));
+      };
+      reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler o arquivo."));
+      reader.readAsDataURL(file);
+    });
+  }
+
   async function handleAiFileUpload(file: File) {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const isVisionFile = ["pdf", "png", "jpg", "jpeg", "webp"].includes(ext);
+
     setExtractingFile(true);
     try {
+      if (isVisionFile) {
+        const fileBase64 = await fileToBase64(file);
+        const result = await runTranscribeFile({
+          data: { file_base64: fileBase64, file_name: file.name },
+        });
+        setAiSource(result.text);
+        toast.success(`"${file.name}" transcrito. Confira o texto antes de gerar os cards.`);
+        return;
+      }
+
       const { text, truncated } = await extractTextFromFile(file);
       setAiSource(text);
       toast.success(
@@ -762,10 +788,10 @@ function CriacaoPage() {
                             <label className="cursor-pointer text-sky-400 underline underline-offset-2 hover:text-sky-300">
                               {extractingFile
                                 ? "lendo arquivo..."
-                                : "envie um arquivo (.docx ou .txt)"}
+                                : "envie um arquivo (.docx, .txt, .pdf, imagem)"}
                               <input
                                 type="file"
-                                accept=".docx,.txt,.md"
+                                accept=".docx,.txt,.md,.pdf,.png,.jpg,.jpeg,.webp"
                                 className="hidden"
                                 disabled={extractingFile}
                                 onChange={(e) => {
@@ -775,8 +801,10 @@ function CriacaoPage() {
                                 }}
                               />
                             </label>{" "}
-                            — o texto extraído substitui o que estiver colado aqui, pra você
-                            conferir/editar antes de gerar.
+                            — PDF e imagem (foto de slide, por exemplo) usam a IA pra ler o
+                            conteúdo, inclusive texto dentro de figura; pode demorar mais que
+                            .docx/.txt. O texto extraído substitui o que estiver colado aqui, pra
+                            você conferir/editar antes de gerar.
                           </span>
                         </label>
                         {!suggestMissingMode && (
