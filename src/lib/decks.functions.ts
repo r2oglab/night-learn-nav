@@ -10,7 +10,7 @@ export const listDecks = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("decks")
       .select(
-        "id,user_id,name,parent_id,created_at,daily_limit,sort_order,pinned,exam_date,daily_new_limit",
+        "id,user_id,name,parent_id,created_at,daily_limit,sort_order,pinned,exam_date,daily_new_limit,archived",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
@@ -268,6 +268,53 @@ export const setDeckPinned = createServerFn({ method: "POST" })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
+    return updated;
+  });
+
+/** Archives (or unarchives) a deck — a module that's done but worth
+ * keeping, not something to delete. The `archived` flag itself lives only
+ * on the deck node the person archived; what actually keeps its cards out
+ * of Revisões/Dashboard/due-counts is suspending them, which every one of
+ * those queries already excludes — so archiving needs no new query
+ * anywhere else. Walks the whole subtree (a módulo's subdecks included),
+ * since that's the level people actually archive at. */
+export const setDeckArchived = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string; archived: boolean }) => {
+    if (!input.id?.trim()) throw new Error("ID do deck inválido.");
+    return { id: input.id, archived: !!input.archived };
+  })
+  .handler(async ({ data, context }) => {
+    const { data: updated, error } = await context.supabase
+      .from("decks")
+      .update({ archived: data.archived })
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+
+    const { data: allDecks } = await context.supabase
+      .from("decks")
+      .select("id,parent_id")
+      .eq("user_id", context.userId);
+    const subtreeIds: string[] = [];
+    const collect = (id: string) => {
+      subtreeIds.push(id);
+      for (const d of allDecks ?? []) {
+        if (d.parent_id === id) collect(d.id);
+      }
+    };
+    collect(data.id);
+
+    const { error: cardsError } = await context.supabase
+      .from("cards")
+      .update({ suspended: data.archived })
+      .in("deck_id", subtreeIds)
+      .eq("user_id", context.userId)
+      .is("deleted_at", null);
+    if (cardsError) throw new Error(cardsError.message);
+
     return updated;
   });
 

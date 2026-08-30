@@ -25,6 +25,8 @@ import {
   ArrowUp,
   ArrowDown,
   FolderPlus,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -45,6 +47,7 @@ import {
   deleteDeck,
   updateDeck,
   setDeckPinned,
+  setDeckArchived,
   reorderDecks,
   listTrashedDecks,
   restoreDeck,
@@ -236,6 +239,17 @@ function FlashcardsPage() {
   // Trash — a whole separate view, not another lens on the same list, since
   // it reads from its own query (listCards never returns trashed cards).
   const [showTrash, setShowTrash] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const setArchivedServer = useServerFn(setDeckArchived);
+  const setArchivedMutation = useMutation({
+    mutationFn: (vars: { id: string; archived: boolean }) => setArchivedServer({ data: vars }),
+    onSuccess: (_data, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success(vars.archived ? "Deck arquivado" : "Deck desarquivado");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
   const fetchTrashed = useServerFn(listTrashedCards);
   const { data: trashedCards = [], isLoading: trashLoading } = useQuery({
     queryKey: ["trashedCards"],
@@ -1229,6 +1243,11 @@ function FlashcardsPage() {
               <h3 className="min-w-0 flex-1 truncate text-sm font-medium" title={deck.name}>
                 {deck.name}
               </h3>
+              {deck.archived && (
+                <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                  Arquivado
+                </span>
+              )}
               <span className="shrink-0 text-xs text-muted-foreground">
                 {totalCardCount} card(s)
               </span>
@@ -1311,6 +1330,27 @@ function FlashcardsPage() {
                 >
                   <Star className={cn("size-3.5", deck.pinned && "fill-current text-primary")} />
                   <span className="sr-only">{deck.pinned ? "Desafixar" : "Fixar no topo"}</span>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title={
+                    deck.archived
+                      ? "Desarquivar (reativa os cards suspensos por esse arquivamento)"
+                      : "Arquivar (some da lista do dia a dia, cards saem da fila de revisão)"
+                  }
+                  disabled={setArchivedMutation.isPending}
+                  onClick={() =>
+                    setArchivedMutation.mutate({ id: deck.id, archived: !deck.archived })
+                  }
+                >
+                  {deck.archived ? (
+                    <ArchiveRestore className="size-3.5 text-primary" />
+                  ) : (
+                    <Archive className="size-3.5" />
+                  )}
+                  <span className="sr-only">{deck.archived ? "Desarquivar" : "Arquivar"}</span>
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -1398,12 +1438,15 @@ function FlashcardsPage() {
             <ul className="space-y-3">{deckCards.map((card: any) => renderCardRow(card))}</ul>
           ))}
 
-        {/* Render subdecks below, when expanded */}
+        {/* Render subdecks below, when expanded — archived ones stay
+            hidden here too, unless "Mostrar arquivados" is on. */}
         {children.length > 0 && isOpen && (
           <div className="mt-3 space-y-3 pl-6">
-            {children.map((child) => (
-              <div key={child.id}>{renderTreeNode(child, level + 1)}</div>
-            ))}
+            {children
+              .filter((child) => showArchived || !child.archived)
+              .map((child) => (
+                <div key={child.id}>{renderTreeNode(child, level + 1)}</div>
+              ))}
           </div>
         )}
       </section>
@@ -1497,6 +1540,14 @@ function FlashcardsPage() {
                     onClick={() => setShowTrash((v) => !v)}
                   >
                     {showTrash ? "Voltar" : "Lixeira"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={showArchived ? "default" : "outline"}
+                    title="Decks arquivados ficam escondidos daqui por padrão"
+                    onClick={() => setShowArchived((v) => !v)}
+                  >
+                    {showArchived ? "Ocultar arquivados" : "Mostrar arquivados"}
                   </Button>
                   <Button
                     size="sm"
@@ -1920,7 +1971,9 @@ function FlashcardsPage() {
                       </div>
                     )
                   ) : (
-                    roots.map((root) => <div key={root.id}>{renderTreeNode(root)}</div>)
+                    roots
+                      .filter((root) => showArchived || !root.archived)
+                      .map((root) => <div key={root.id}>{renderTreeNode(root)}</div>)
                   )}
                 </div>
               )}
