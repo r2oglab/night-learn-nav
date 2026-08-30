@@ -154,7 +154,7 @@ function Configuracoes() {
           </header>
 
           <main className="flex flex-1 justify-center p-3 sm:p-6">
-            <div className="w-full max-w-2xl">
+            <div className="w-full min-w-0 max-w-2xl">
               <section className="rounded-xl border border-border bg-card p-4 sm:p-6">
                 <h2 className="text-sm font-medium">Conta</h2>
                 <div className="mt-4 grid gap-4">

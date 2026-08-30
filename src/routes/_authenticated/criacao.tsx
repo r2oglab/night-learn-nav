@@ -356,8 +356,6 @@ function CriacaoPage() {
     drawRectRef.current = initial;
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrawing(initial);
-
-    console.log("[oclusao] pointerdown", e.pointerId, e.pointerType);
   }
 
   function handlePointerMove(e: React.PointerEvent) {
@@ -381,7 +379,6 @@ function CriacaoPage() {
   }
 
   function handlePointerUp(e: React.PointerEvent) {
-    console.log("[oclusao] pointerup", e.pointerId, "anchor was", drawAnchorRef.current);
     const anchor = drawAnchorRef.current;
     drawAnchorRef.current = null;
     if (!anchor) return;
@@ -392,7 +389,6 @@ function CriacaoPage() {
     drawRectRef.current = null;
     setDrawing(null);
     if (finished && finished.width > 1 && finished.height > 1) {
-      console.log("[oclusao] committing region", finished);
       setRegions((r) => [
         ...r,
         {
@@ -581,7 +577,7 @@ function CriacaoPage() {
           </header>
 
           <main className="flex flex-1 justify-center p-3 sm:p-6">
-            <div className="w-full max-w-3xl">
+            <div className="w-full min-w-0 max-w-3xl">
               <CardPreviewDialog
                 card={previewCard}
                 open={previewCard !== null}

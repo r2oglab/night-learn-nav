@@ -359,7 +359,7 @@ function Index() {
             </header>
 
             <main className="flex flex-1 justify-center p-3 sm:p-6">
-              <div className="w-full max-w-[1400px] basis-4/5 md:w-4/5">
+              <div className="w-full min-w-0 max-w-[1400px] basis-4/5 md:w-4/5">
                 {!hiddenWidgets.includes("foco") &&
                   todayFocus &&
                   (todayFocus.dueCount > 0 || todayFocus.leechCount > 0) && (

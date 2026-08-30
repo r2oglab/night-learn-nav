@@ -1412,7 +1412,7 @@ function FlashcardsPage() {
           </header>
 
           <main className="flex flex-1 justify-center p-3 sm:p-6">
-            <div className="w-full max-w-3xl">
+            <div className="w-full min-w-0 max-w-3xl">
               <CardPreviewDialog
                 card={previewCard}
                 open={previewCard !== null}
