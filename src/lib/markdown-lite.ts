@@ -16,11 +16,20 @@
 export function renderLiteMarkdown(text: string): string {
   const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+  // Inline style, not a Tailwind class: this HTML is injected via
+  // dangerouslySetInnerHTML from a plain .ts file, not JSX, so there's no
+  // guarantee Tailwind's content-scanner picks up a class name written as
+  // a string here. Inline CSS sidesteps that risk entirely. <strong>/<em>
+  // don't need this — their default browser styling (bold/italic) is
+  // strong enough on its own to be unmistakable.
+  const CODE_STYLE =
+    "font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: rgba(128,128,128,0.2); padding: 0.1em 0.4em; border-radius: 0.3em; font-size: 0.875em;";
+
   // Order matters: bold's ** pairs are consumed first, so the italic
   // pass (single *) never mistakes a bold marker's stars for its own.
   return escaped
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*]+?)\*(?!\*)/g, "$1<em>$2</em>")
-    .replace(/`(.+?)`/g, "<code>$1</code>")
+    .replace(/`(.+?)`/g, `<code style="${CODE_STYLE}">$1</code>`)
     .replace(/\n/g, "<br />");
 }
