@@ -510,7 +510,7 @@ function Index() {
                     <span className="text-xs underline">Revisar agora</span>
                   </Link>
                 )}
-                <div className="order-5 flex flex-col items-stretch gap-4 overflow-x-auto sm:order-4 sm:grid sm:grid-cols-[auto_160px] lg:grid-cols-[auto_1fr_160px]">
+                <div className="order-5 flex flex-col items-stretch gap-4 overflow-x-auto sm:order-4 sm:grid sm:grid-cols-[auto_160px] lg:grid-cols-[auto_minmax(0,1fr)_160px]">
                   {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
                   <div className="inline-flex flex-col justify-center gap-1.5 justify-self-start rounded-xl border border-border bg-card p-3">
                     <div className="grid grid-cols-7 gap-1.5">
