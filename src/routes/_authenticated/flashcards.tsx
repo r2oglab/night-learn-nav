@@ -664,6 +664,30 @@ function FlashcardsPage() {
     setStudySessionMode("exam");
   }
 
+  /** Prova cumulativa: mesmo mecanismo da prova simulada, mas a partir de
+   * uma seleção livre de cards — pode vir de vários módulos/decks
+   * diferentes de uma vez (marcados via os checkboxes de seleção em lote),
+   * simulando uma prova de verdade que mistura assuntos. */
+  function startCumulativeExam(ids: Set<string>) {
+    const subset = shuffled(
+      cards
+        .filter((c) => ids.has(c.id) && !c.suspended)
+        .map((c) => ({
+          ...c,
+          rootDeckName: findRootDeckName(c.deck_id),
+          level1SubdeckName: findLevel1SubdeckName(c.deck_id),
+          occlusion_regions: Array.isArray(c.occlusion_regions) ? c.occlusion_regions : null,
+        })),
+    );
+    if (subset.length === 0) {
+      toast.info("Nenhum card ativo (não suspenso) na seleção.");
+      return;
+    }
+    setStudySessionCards(subset);
+    setStudySessionMode("exam");
+    exitSelectionMode();
+  }
+
   const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
 
   /** Export a deck (and its subdecks) as CSV our own importer can read back. */
@@ -1823,6 +1847,14 @@ function FlashcardsPage() {
                       <span className="text-xs text-muted-foreground">
                         {selectedIds.size} selecionado(s)
                       </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => startCumulativeExam(selectedIds)}
+                      >
+                        Prova cumulativa
+                      </Button>
                       <select
                         className="h-8 rounded-md border border-border bg-background px-2 text-xs"
                         defaultValue=""
