@@ -336,6 +336,12 @@ function CriacaoPage() {
   }
 
   const drawAnchorRef = useRef<{ startX: number; startY: number } | null>(null);
+  // Mirrors `drawing` state but reads synchronously, with no dependency on
+  // React's setState-updater timing — the commit logic in handlePointerUp
+  // reads the finished rect from here, not from inside another setter's
+  // callback (that nested-setter-in-updater pattern was the previous
+  // suspect for the duplicate-region bug).
+  const drawRectRef = useRef<DrawingRect | null>(null);
 
   // Pointer capture routes every subsequent move/up for this exact pointer
   // straight to this element — no window-level listener, no effect
@@ -346,8 +352,12 @@ function CriacaoPage() {
     if (e.button !== 0) return;
     const { x, y } = getRelativePos(e.clientX, e.clientY);
     drawAnchorRef.current = { startX: x, startY: y };
+    const initial: DrawingRect = { startX: x, startY: y, x, y, width: 0, height: 0 };
+    drawRectRef.current = initial;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setDrawing({ startX: x, startY: y, x, y, width: 0, height: 0 });
+    setDrawing(initial);
+
+    console.log("[oclusao] pointerdown", e.pointerId, e.pointerType);
   }
 
   function handlePointerMove(e: React.PointerEvent) {
@@ -358,33 +368,43 @@ function CriacaoPage() {
     const newY = Math.min(y, anchor.startY);
     const width = Math.abs(x - anchor.startX);
     const height = Math.abs(y - anchor.startY);
-    setDrawing({ startX: anchor.startX, startY: anchor.startY, x: newX, y: newY, width, height });
+    const next: DrawingRect = {
+      startX: anchor.startX,
+      startY: anchor.startY,
+      x: newX,
+      y: newY,
+      width,
+      height,
+    };
+    drawRectRef.current = next;
+    setDrawing(next);
   }
 
   function handlePointerUp(e: React.PointerEvent) {
+    console.log("[oclusao] pointerup", e.pointerId, "anchor was", drawAnchorRef.current);
     const anchor = drawAnchorRef.current;
     drawAnchorRef.current = null;
     if (!anchor) return;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    setDrawing((current) => {
-      if (current && current.width > 1 && current.height > 1) {
-        const finished = current;
-        setRegions((r) => [
-          ...r,
-          {
-            id: crypto.randomUUID(),
-            x: finished.x,
-            y: finished.y,
-            width: finished.width,
-            height: finished.height,
-            label: "",
-          },
-        ]);
-      }
-      return null;
-    });
+    const finished = drawRectRef.current;
+    drawRectRef.current = null;
+    setDrawing(null);
+    if (finished && finished.width > 1 && finished.height > 1) {
+      console.log("[oclusao] committing region", finished);
+      setRegions((r) => [
+        ...r,
+        {
+          id: crypto.randomUUID(),
+          x: finished.x,
+          y: finished.y,
+          width: finished.width,
+          height: finished.height,
+          label: "",
+        },
+      ]);
+    }
   }
 
   function recomputeCsvPreview(
