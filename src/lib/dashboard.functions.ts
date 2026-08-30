@@ -78,3 +78,56 @@ export const getTodayFocus = createServerFn({ method: "GET" })
       nearestExam: nearest,
     };
   });
+
+/** Longest study streak ever, plus total distinct days studied — both
+ * derived from review_logs, same source of truth as "sequência atual" in
+ * user_settings but looking at the whole history instead of just today's
+ * running count. */
+export const getStreakStats = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { tz_offset_minutes: number }) => ({
+    tz_offset_minutes: Number.isFinite(input.tz_offset_minutes) ? input.tz_offset_minutes : 0,
+  }))
+  .handler(async ({ data, context }) => {
+    const { data: logs, error } = await context.supabase
+      .from("review_logs")
+      .select("reviewed_at")
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+
+    const days = new Set<string>();
+    for (const row of logs ?? []) {
+      days.add(toLocalDateString(new Date(row.reviewed_at), data.tz_offset_minutes));
+    }
+    const sorted = [...days].sort();
+
+    let longest = 0;
+    let longestStart: string | null = null;
+    let longestEnd: string | null = null;
+    let runStart = "";
+    let runLen = 0;
+    let prev: string | null = null;
+    for (const day of sorted) {
+      const isConsecutive = prev
+        ? (() => {
+            const nextDay = new Date(`${prev}T00:00:00`);
+            nextDay.setDate(nextDay.getDate() + 1);
+            return nextDay.toISOString().slice(0, 10) === day;
+          })()
+        : false;
+      if (isConsecutive) {
+        runLen++;
+      } else {
+        runLen = 1;
+        runStart = day;
+      }
+      if (runLen > longest) {
+        longest = runLen;
+        longestStart = runStart;
+        longestEnd = day;
+      }
+      prev = day;
+    }
+
+    return { longest, longestStart, longestEnd, totalStudyDays: sorted.length };
+  });

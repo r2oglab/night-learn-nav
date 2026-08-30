@@ -13,6 +13,7 @@ import { getUserSettings, upsertUserSettings } from "@/lib/user_settings.functio
 import { ACCENT_PRESETS } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { listCards } from "@/lib/cards.functions";
+import { getStreakStats } from "@/lib/dashboard.functions";
 import { listDecks } from "@/lib/decks.functions";
 import { exportFullBackup } from "@/lib/backup.functions";
 import { downloadTextFile } from "@/lib/csv-export";
@@ -42,6 +43,13 @@ function Configuracoes() {
     queryFn: () => fetchSettings(),
   });
   const { data: decks = [] } = useQuery({ queryKey: ["decks"], queryFn: () => fetchDecks() });
+
+  const fetchStreakStats = useServerFn(getStreakStats);
+  const { data: streakStats } = useQuery({
+    queryKey: ["cards", "streakStats"],
+    queryFn: () =>
+      fetchStreakStats({ data: { tz_offset_minutes: new Date().getTimezoneOffset() } }),
+  });
 
   const upsertFn = useServerFn(upsertUserSettings);
   const upsertMutation = useMutation({
@@ -222,6 +230,28 @@ function Configuracoes() {
                   <div className="grid gap-2 border-t border-border pt-4">
                     <div className="text-sm text-muted-foreground">Sequência atual</div>
                     <div className="text-lg font-semibold">{settings?.streak ?? 0} dias</div>
+                    {streakStats && streakStats.longest > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Recorde: {streakStats.longest} dias seguidos
+                        {streakStats.longestStart && streakStats.longestEnd && (
+                          <>
+                            {" "}
+                            (
+                            {new Date(`${streakStats.longestStart}T00:00:00`).toLocaleDateString(
+                              "pt-BR",
+                              { day: "2-digit", month: "short" },
+                            )}{" "}
+                            a{" "}
+                            {new Date(`${streakStats.longestEnd}T00:00:00`).toLocaleDateString(
+                              "pt-BR",
+                              { day: "2-digit", month: "short" },
+                            )}
+                            )
+                          </>
+                        )}{" "}
+                        · {streakStats.totalStudyDays} dia(s) de estudo no total
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid gap-2">
