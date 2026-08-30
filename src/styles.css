@@ -198,6 +198,18 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+
+  /* Scroll still works via wheel/trackpad/touch/keyboard — this only hides
+     the visual track+thumb, everywhere in the app, on every scrollable
+     element. Not just aesthetic: it removes the "why is a scrollbar stuck
+     mid-track" question the mobile preview kept raising. */
+  * {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* old Edge/IE */
+  }
+  *::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/new Edge */
+  }
 }
 
 /* Review session polish: reveal fade + brief correct/incorrect flash. */

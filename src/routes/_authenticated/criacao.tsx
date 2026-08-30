@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Plus, Loader2, ClipboardPaste, Maximize2, Upload, Sparkles, Eye } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -336,60 +336,56 @@ function CriacaoPage() {
   }
 
   const drawAnchorRef = useRef<{ startX: number; startY: number } | null>(null);
-  const drawCommittedRef = useRef(false);
 
-  function handleMouseDown(e: React.MouseEvent) {
+  // Pointer capture routes every subsequent move/up for this exact pointer
+  // straight to this element — no window-level listener, no effect
+  // lifecycle to accidentally double-register. anchorRef is nulled out
+  // first thing in handlePointerUp, so even a stray extra pointerup finds
+  // nothing left to commit.
+  function handlePointerDown(e: React.PointerEvent) {
+    if (e.button !== 0) return;
     const { x, y } = getRelativePos(e.clientX, e.clientY);
     drawAnchorRef.current = { startX: x, startY: y };
-    drawCommittedRef.current = false;
+    e.currentTarget.setPointerCapture(e.pointerId);
     setDrawing({ startX: x, startY: y, x, y, width: 0, height: 0 });
   }
 
-  const isDrawing = drawing !== null;
-  useEffect(() => {
-    if (!isDrawing) return;
-    function handleWindowMouseMove(e: MouseEvent) {
-      const anchor = drawAnchorRef.current;
-      if (!anchor) return;
-      const { x, y } = getRelativePos(e.clientX, e.clientY);
-      const newX = Math.min(x, anchor.startX);
-      const newY = Math.min(y, anchor.startY);
-      const width = Math.abs(x - anchor.startX);
-      const height = Math.abs(y - anchor.startY);
-      setDrawing({ startX: anchor.startX, startY: anchor.startY, x: newX, y: newY, width, height });
+  function handlePointerMove(e: React.PointerEvent) {
+    const anchor = drawAnchorRef.current;
+    if (!anchor) return;
+    const { x, y } = getRelativePos(e.clientX, e.clientY);
+    const newX = Math.min(x, anchor.startX);
+    const newY = Math.min(y, anchor.startY);
+    const width = Math.abs(x - anchor.startX);
+    const height = Math.abs(y - anchor.startY);
+    setDrawing({ startX: anchor.startX, startY: anchor.startY, x: newX, y: newY, width, height });
+  }
+
+  function handlePointerUp(e: React.PointerEvent) {
+    const anchor = drawAnchorRef.current;
+    drawAnchorRef.current = null;
+    if (!anchor) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    function handleWindowMouseUp() {
-      // Guards against this firing more than once per drag — whatever the
-      // cause (a duplicate event, a double-invoked handler), only the
-      // first call is allowed to actually add a region.
-      if (drawCommittedRef.current) return;
-      drawCommittedRef.current = true;
-      setDrawing((current) => {
-        if (current && current.width > 1 && current.height > 1) {
-          const finished = current;
-          setRegions((r) => [
-            ...r,
-            {
-              id: crypto.randomUUID(),
-              x: finished.x,
-              y: finished.y,
-              width: finished.width,
-              height: finished.height,
-              label: "",
-            },
-          ]);
-        }
-        return null;
-      });
-      drawAnchorRef.current = null;
-    }
-    window.addEventListener("mousemove", handleWindowMouseMove);
-    window.addEventListener("mouseup", handleWindowMouseUp, { once: true });
-    return () => {
-      window.removeEventListener("mousemove", handleWindowMouseMove);
-      window.removeEventListener("mouseup", handleWindowMouseUp);
-    };
-  }, [isDrawing]);
+    setDrawing((current) => {
+      if (current && current.width > 1 && current.height > 1) {
+        const finished = current;
+        setRegions((r) => [
+          ...r,
+          {
+            id: crypto.randomUUID(),
+            x: finished.x,
+            y: finished.y,
+            width: finished.width,
+            height: finished.height,
+            label: "",
+          },
+        ]);
+      }
+      return null;
+    });
+  }
 
   function recomputeCsvPreview(
     rows: string[][],
@@ -1155,8 +1151,11 @@ function CriacaoPage() {
                         <div className="flex">
                           <div
                             ref={imageAreaRef}
-                            className="relative inline-block cursor-crosshair select-none overflow-hidden rounded-lg border border-border"
-                            onMouseDown={handleMouseDown}
+                            className="relative inline-block touch-none select-none overflow-hidden rounded-lg border border-border cursor-crosshair"
+                            onPointerDown={handlePointerDown}
+                            onPointerMove={handlePointerMove}
+                            onPointerUp={handlePointerUp}
+                            onPointerCancel={handlePointerUp}
                           >
                             <img
                               src={occlusionImageUrl}
