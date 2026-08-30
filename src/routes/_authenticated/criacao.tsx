@@ -336,10 +336,12 @@ function CriacaoPage() {
   }
 
   const drawAnchorRef = useRef<{ startX: number; startY: number } | null>(null);
+  const drawCommittedRef = useRef(false);
 
   function handleMouseDown(e: React.MouseEvent) {
     const { x, y } = getRelativePos(e.clientX, e.clientY);
     drawAnchorRef.current = { startX: x, startY: y };
+    drawCommittedRef.current = false;
     setDrawing({ startX: x, startY: y, x, y, width: 0, height: 0 });
   }
 
@@ -357,6 +359,11 @@ function CriacaoPage() {
       setDrawing({ startX: anchor.startX, startY: anchor.startY, x: newX, y: newY, width, height });
     }
     function handleWindowMouseUp() {
+      // Guards against this firing more than once per drag — whatever the
+      // cause (a duplicate event, a double-invoked handler), only the
+      // first call is allowed to actually add a region.
+      if (drawCommittedRef.current) return;
+      drawCommittedRef.current = true;
       setDrawing((current) => {
         if (current && current.width > 1 && current.height > 1) {
           const finished = current;
@@ -377,7 +384,7 @@ function CriacaoPage() {
       drawAnchorRef.current = null;
     }
     window.addEventListener("mousemove", handleWindowMouseMove);
-    window.addEventListener("mouseup", handleWindowMouseUp);
+    window.addEventListener("mouseup", handleWindowMouseUp, { once: true });
     return () => {
       window.removeEventListener("mousemove", handleWindowMouseMove);
       window.removeEventListener("mouseup", handleWindowMouseUp);
@@ -548,7 +555,7 @@ function CriacaoPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background text-foreground">
+      <div className="flex min-h-screen w-full overflow-x-hidden bg-background text-foreground">
         <AppSidebar />
         <div className="flex flex-1 flex-col">
           <header className="flex h-14 items-center gap-3 border-b border-border px-4">

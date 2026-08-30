@@ -274,8 +274,8 @@ export function ImageOcclusionEditor({
     }
 
     window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleUp);
-    window.addEventListener("pointercancel", handleUp);
+    window.addEventListener("pointerup", handleUp, { once: true });
+    window.addEventListener("pointercancel", handleUp, { once: true });
     return () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
@@ -517,11 +517,11 @@ export function ImageOcclusionEditor({
               </Button>
             </>
           )}
-          <span className="hidden text-xs text-muted-foreground sm:inline">
+          <span className="w-full text-xs text-muted-foreground sm:w-auto">
             {tool === "select" &&
               "Arraste pra marcar. Arraste o centro pra mover, as alças pra redimensionar em qualquer direção."}
             {tool === "crop" &&
-              "Arraste pra selecionar o corte. Arraste o centro pra mover, as alças pra redimensionar."}
+              'Arraste pra selecionar o corte. Depois clique em "Aplicar corte" pra confirmar.'}
             {tool === "text" &&
               "Clique pra adicionar texto. Arraste o texto pra mover, o cantinho pra mudar o tamanho da fonte."}
           </span>

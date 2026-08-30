@@ -1254,7 +1254,7 @@ function FlashcardsPage() {
                     </span>
                   );
                 })()}
-              <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              <div className="ml-auto flex shrink-0 flex-wrap items-center gap-0.5">
                 <Button
                   size="icon"
                   variant="ghost"
@@ -1402,7 +1402,7 @@ function FlashcardsPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background text-foreground">
+      <div className="flex min-h-screen w-full overflow-x-hidden bg-background text-foreground">
         <AppSidebar />
         <div className="flex flex-1 flex-col">
           <header className="flex h-14 items-center gap-3 border-b border-border px-4">
@@ -1457,7 +1457,7 @@ function FlashcardsPage() {
                   }}
                 />
               )}
-              <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <Button
                   size="sm"
                   variant="outline"
@@ -1471,7 +1471,7 @@ function FlashcardsPage() {
                 >
                   + Novo deck
                 </Button>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
                     variant={selectionMode ? "default" : "outline"}

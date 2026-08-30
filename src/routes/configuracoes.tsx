@@ -144,7 +144,7 @@ function Configuracoes() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background text-foreground">
+      <div className="flex min-h-screen w-full overflow-x-hidden bg-background text-foreground">
         <AppSidebar />
         <div className="flex flex-1 flex-col">
           <header className="flex h-14 items-center gap-3 border-b border-border px-4">
