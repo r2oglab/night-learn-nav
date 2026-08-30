@@ -1086,7 +1086,7 @@ function FlashcardsPage() {
                 title="Excluir card"
                 disabled={delMutation.isPending}
                 onClick={() => {
-                  const ok = window.confirm(`Excluir o card "${card.pergunta}"?`);
+                  const ok = window.confirm(`Excluir o card "${card.pergunta}"? Vai pra lixeira.`);
                   if (ok) delMutation.mutate(card.id);
                 }}
               >
@@ -1362,10 +1362,14 @@ function FlashcardsPage() {
                   className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
                   title="Excluir deck"
                   onClick={() => {
-                    const deckIds = new Set(collectDeckIds(deck.id));
-                    const count = cards.filter((c: any) => deckIds.has(c.deck_id)).length;
+                    const deckIds = collectDeckIds(deck.id);
+                    const subdeckCount = deckIds.length - 1;
+                    const count = cards.filter((c: any) => deckIds.includes(c.deck_id)).length;
+                    const parts = [`o deck "${deck.name}"`];
+                    if (subdeckCount > 0) parts.push(`${subdeckCount} subdeck(s) dele`);
+                    if (count > 0) parts.push(`${count} card(s)`);
                     const ok = window.confirm(
-                      `Excluir deck "${deck.name}"? Isso também removerá ${count} card(s) deste deck.`,
+                      `Mover para a lixeira: ${parts.join(", ")}. Fica lá por 30 dias, recuperável a qualquer momento até então.`,
                     );
                     if (ok) removeDeck.mutate(deck.id);
                   }}
@@ -1622,7 +1626,7 @@ function FlashcardsPage() {
                               disabled={permanentDeleteDeckMutation.isPending}
                               onClick={() => {
                                 const ok = window.confirm(
-                                  `Excluir "${deck.name}" e todos os cards dele permanentemente? Isso não pode ser desfeito.`,
+                                  `Excluir "${deck.name}" permanentemente — junto com qualquer subdeck dele e todos os cards? Isso não pode ser desfeito.`,
                                 );
                                 if (ok) permanentDeleteDeckMutation.mutate(deck.id);
                               }}
