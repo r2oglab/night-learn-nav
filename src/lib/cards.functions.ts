@@ -619,6 +619,17 @@ export const linkCards = createServerFn({ method: "POST" })
     return { card_a_id, card_b_id };
   })
   .handler(async ({ data, context }) => {
+    // Both cards must belong to this user — without this, a crafted request
+    // could link an owned card to someone else's card id, then read that
+    // card's content back through listCardLinks below.
+    const { data: owned, error: ownedError } = await context.supabase
+      .from("cards")
+      .select("id")
+      .in("id", [data.card_a_id, data.card_b_id])
+      .eq("user_id", context.userId);
+    if (ownedError) throw new Error(ownedError.message);
+    if ((owned ?? []).length !== 2) throw new Error("Card não encontrado.");
+
     const { error } = await context.supabase.from("card_links").insert({
       user_id: context.userId,
       card_a_id: data.card_a_id,
@@ -673,6 +684,7 @@ export const listCardLinks = createServerFn({ method: "GET" })
       .from("cards")
       .select("id,pergunta,resposta,deck_id")
       .in("id", otherIds)
+      .eq("user_id", context.userId)
       .is("deleted_at", null);
     if (cardsError) throw new Error(cardsError.message);
     return otherCards ?? [];
@@ -922,11 +934,15 @@ export const updateImageOcclusion = createServerFn({ method: "POST" })
     if (!anchor.image_url) throw new Error("Este card não é de oclusão de imagem.");
 
     // Every card generated from the same picture shares its image_url.
+    // Trashed siblings are deliberately excluded: syncing regions shouldn't
+    // resurrect a card the person put in the trash, and it definitely
+    // shouldn't hard-delete it just because its region is no longer kept.
     const { data: siblings, error: siblingsError } = await context.supabase
       .from("cards")
       .select("*")
       .eq("deck_id", anchor.deck_id)
-      .eq("image_url", anchor.image_url);
+      .eq("image_url", anchor.image_url)
+      .is("deleted_at", null);
     if (siblingsError) throw new Error(siblingsError.message);
 
     const imageUrl = data.image_url?.trim() || anchor.image_url;
