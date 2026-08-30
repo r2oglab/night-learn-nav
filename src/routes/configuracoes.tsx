@@ -146,14 +146,14 @@ function Configuracoes() {
     <SidebarProvider>
       <div className="flex min-h-screen w-full overflow-x-hidden bg-background text-foreground">
         <AppSidebar />
-        <div className="flex flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-14 items-center gap-3 border-b border-border px-4">
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-5" />
             <h1 className="text-sm font-medium">Configurações</h1>
           </header>
 
-          <main className="flex flex-1 justify-center p-3 sm:p-6">
+          <main className="flex min-w-0 flex-1 justify-center p-3 sm:p-6">
             <div className="w-full min-w-0 max-w-2xl">
               <section className="rounded-xl border border-border bg-card p-4 sm:p-6">
                 <h2 className="text-sm font-medium">Conta</h2>

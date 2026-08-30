@@ -350,7 +350,7 @@ function Index() {
         <AppSidebar />
 
         {dateReady ? (
-          <div className="flex flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 flex-col">
             <header className="flex h-14 items-center gap-3 border-b border-border px-4">
               <SidebarTrigger />
               <Separator orientation="vertical" className="h-5" />
@@ -358,7 +358,7 @@ function Index() {
               <div className="ml-auto" />
             </header>
 
-            <main className="flex flex-1 justify-center p-3 sm:p-6">
+            <main className="flex min-w-0 flex-1 justify-center p-3 sm:p-6">
               <div className="w-full min-w-0 max-w-[1400px] basis-4/5 md:w-4/5">
                 {!hiddenWidgets.includes("foco") &&
                   todayFocus &&
