@@ -359,6 +359,32 @@ function Index() {
   });
 
   const forecastMax = Math.max(1, ...forecast.map((d) => d.count));
+  // Rendered in 3 places (mobile/tablet/desktop each show it in a different
+  // spot in the layout), so it's built once here instead of 3 times.
+  const forecastBody = forecast.every((d) => d.count === 0) ? (
+    <p className="text-sm text-muted-foreground">Nada agendado para os próximos 14 dias.</p>
+  ) : (
+    <div className="flex items-end gap-1 overflow-x-auto">
+      {forecast.map((day) => (
+        <div
+          key={day.date}
+          className="flex min-w-[38px] flex-1 flex-col items-center gap-1"
+          title={`${day.count} card(s)`}
+        >
+          <span className="text-[10px] text-muted-foreground">
+            {day.count > 0 ? day.count : ""}
+          </span>
+          <div
+            className={cn("w-full rounded-t", day.count > 0 ? "bg-primary" : "bg-muted")}
+            style={{
+              height: `${Math.max(day.count > 0 ? 6 : 2, (day.count / forecastMax) * 80)}px`,
+            }}
+          />
+          <span className="whitespace-nowrap text-[10px] text-muted-foreground">{day.label}</span>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <SidebarProvider>
@@ -484,7 +510,7 @@ function Index() {
                     <span className="text-xs underline">Revisar agora</span>
                   </Link>
                 )}
-                <div className="order-5 flex flex-col items-stretch gap-4 overflow-x-auto sm:order-4 sm:grid sm:grid-cols-[auto_160px]">
+                <div className="order-5 flex flex-col items-stretch gap-4 overflow-x-auto sm:order-4 sm:grid sm:grid-cols-[auto_160px] lg:grid-cols-[auto_1fr_160px]">
                   {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
                   <div className="inline-flex flex-col justify-center gap-1.5 justify-self-start rounded-xl border border-border bg-card p-3">
                     <div className="grid grid-cols-7 gap-1.5">
@@ -527,6 +553,14 @@ function Index() {
                       })}
                     </div>
                   </div>
+
+                  {/* Desktop (≥1024px): between the heatmap and the donut. */}
+                  {!hiddenWidgets.includes("previsao") && (
+                    <div className="hidden rounded-xl border border-border bg-card p-3 lg:block">
+                      <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
+                      {forecastBody}
+                    </div>
+                  )}
 
                   {/* Pie chart for today, in a card matching the main calendar's style */}
                   <div className="flex w-full shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-border bg-card p-3 sm:w-[160px]">
@@ -711,42 +745,25 @@ function Index() {
                   </div>
                 </div>
 
-                {/* Upcoming workload: helps plan around exam weeks. */}
+                {/* Upcoming workload: helps plan around exam weeks. Positioned
+                    differently per breakpoint — mobile/tablet/desktop each
+                    render forecastBody in a different spot in the layout. */}
                 {!hiddenWidgets.includes("previsao") && (
-                  <div className="order-2 rounded-xl border border-border bg-card p-4 sm:order-6">
-                    <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
-                    {forecast.every((d) => d.count === 0) ? (
-                      <p className="text-sm text-muted-foreground">
-                        Nada agendado para os próximos 14 dias.
-                      </p>
-                    ) : (
-                      <div className="flex items-end gap-1 overflow-x-auto">
-                        {forecast.map((day) => (
-                          <div
-                            key={day.date}
-                            className="flex min-w-[38px] flex-1 flex-col items-center gap-1"
-                            title={`${day.count} card(s)`}
-                          >
-                            <span className="text-[10px] text-muted-foreground">
-                              {day.count > 0 ? day.count : ""}
-                            </span>
-                            <div
-                              className={cn(
-                                "w-full rounded-t",
-                                day.count > 0 ? "bg-primary" : "bg-muted",
-                              )}
-                              style={{
-                                height: `${Math.max(day.count > 0 ? 6 : 2, (day.count / forecastMax) * 80)}px`,
-                              }}
-                            />
-                            <span className="whitespace-nowrap text-[10px] text-muted-foreground">
-                              {day.label}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <>
+                    {/* Mobile (<640px): right after "Foco de hoje". */}
+                    <div className="order-2 rounded-xl border border-border bg-card p-4 sm:hidden">
+                      <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
+                      {forecastBody}
+                    </div>
+                    {/* Tablet (640–1023px): above the calendar — order-4 ties
+                        with the heatmap/donut row, and since this div comes
+                        after it in the source, that tie is broken in our
+                        favor (still before the calendar's order-5). */}
+                    <div className="order-4 hidden rounded-xl border border-border bg-card p-4 sm:block lg:hidden">
+                      <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
+                      {forecastBody}
+                    </div>
+                  </>
                 )}
               </div>
             </main>
