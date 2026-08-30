@@ -309,44 +309,54 @@ function Index() {
   });
 
   /**
-   * How many cards fall due on each of the next 14 days.
+   * How many cards fall due on each day of the viewed week (7 days).
    *
-   * Suspended cards are excluded because they won't actually surface, and
-   * anything already overdue is folded into "hoje" — that's when you'd face
-   * it, regardless of the date printed on the row.
+   * Suspended cards are excluded because they won't actually surface. Only
+   * the current week (offset 0) folds anything already overdue into
+   * "hoje" — that's when you'd actually face it. Future weeks have no
+   * "overdue" concept relative to today, so they're a plain bounded range.
    */
+  const [forecastWeekOffset, setForecastWeekOffset] = useState(0);
   const { data: forecast = [] } = useQuery({
-    queryKey: ["cards", "review-forecast", heatEndISO],
+    queryKey: ["cards", "review-forecast", heatEndISO, forecastWeekOffset],
     enabled: dateReady,
     queryFn: async () => {
-      const horizon = new Date(`${heatEndISO}T00:00:00`);
-      horizon.setDate(horizon.getDate() + 14);
-      const horizonISO = horizon.toISOString().slice(0, 10);
+      const weekStart = new Date(`${heatEndISO}T00:00:00`);
+      weekStart.setDate(weekStart.getDate() + forecastWeekOffset * 7);
+      const weekStartISO = weekStart.toISOString().slice(0, 10);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      const weekEndISO = weekEnd.toISOString().slice(0, 10);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("cards")
         .select("due")
         .eq("suspended", false)
         .is("deleted_at", null)
-        .lt("due", horizonISO);
+        .lt("due", weekEndISO);
+      if (forecastWeekOffset > 0) {
+        query = query.gte("due", weekStartISO);
+      }
+      const { data, error } = await query;
       if (error) throw error;
 
       const counts = new Map<string, number>();
       for (const row of data ?? []) {
-        // Overdue collapses onto today rather than showing a past date.
-        const key = row.due < heatEndISO ? heatEndISO : row.due;
+        // Overdue collapses onto the first day shown, only for the current
+        // week — a future week has nothing to collapse from.
+        const key = forecastWeekOffset === 0 && row.due < weekStartISO ? weekStartISO : row.due;
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
 
       const days: { date: string; label: string; count: number }[] = [];
-      for (let i = 0; i < 14; i++) {
-        const d = new Date(`${heatEndISO}T00:00:00`);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(`${weekStartISO}T00:00:00`);
         d.setDate(d.getDate() + i);
         const iso = d.toISOString().slice(0, 10);
         days.push({
           date: iso,
           label:
-            i === 0
+            forecastWeekOffset === 0 && i === 0
               ? "Hoje"
               : capitalizeFirst(
                   d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit" }),
@@ -361,29 +371,59 @@ function Index() {
   const forecastMax = Math.max(1, ...forecast.map((d) => d.count));
   // Rendered in 3 places (mobile/tablet/desktop each show it in a different
   // spot in the layout), so it's built once here instead of 3 times.
-  const forecastBody = forecast.every((d) => d.count === 0) ? (
-    <p className="text-sm text-muted-foreground">Nada agendado para os próximos 14 dias.</p>
-  ) : (
-    <div className="flex items-end gap-1 overflow-x-auto">
-      {forecast.map((day) => (
-        <div
-          key={day.date}
-          className="flex min-w-[38px] flex-1 flex-col items-center gap-1"
-          title={`${day.count} card(s)`}
-        >
-          <span className="text-[10px] text-muted-foreground">
-            {day.count > 0 ? day.count : ""}
-          </span>
-          <div
-            className={cn("w-full rounded-t", day.count > 0 ? "bg-primary" : "bg-muted")}
-            style={{
-              height: `${Math.max(day.count > 0 ? 6 : 2, (day.count / forecastMax) * 80)}px`,
-            }}
-          />
-          <span className="whitespace-nowrap text-[10px] text-muted-foreground">{day.label}</span>
+  const forecastBody = (
+    <>
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="text-sm font-medium">Próximas revisões</h2>
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-6"
+            disabled={forecastWeekOffset === 0}
+            onClick={() => setForecastWeekOffset((w) => Math.max(0, w - 1))}
+          >
+            <ChevronLeft className="size-3.5" />
+            <span className="sr-only">Semana anterior</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-6"
+            onClick={() => setForecastWeekOffset((w) => w + 1)}
+          >
+            <ChevronRight className="size-3.5" />
+            <span className="sr-only">Próxima semana</span>
+          </Button>
         </div>
-      ))}
-    </div>
+      </div>
+      {forecast.every((d) => d.count === 0) ? (
+        <p className="text-sm text-muted-foreground">Nada agendado nesta semana.</p>
+      ) : (
+        <div className="flex items-end gap-1 overflow-x-auto">
+          {forecast.map((day) => (
+            <div
+              key={day.date}
+              className="flex min-w-[38px] flex-1 flex-col items-center gap-1"
+              title={`${day.count} card(s)`}
+            >
+              <span className="text-[10px] text-muted-foreground">
+                {day.count > 0 ? day.count : ""}
+              </span>
+              <div
+                className={cn("w-full rounded-t", day.count > 0 ? "bg-primary" : "bg-muted")}
+                style={{
+                  height: `${Math.max(day.count > 0 ? 6 : 2, (day.count / forecastMax) * 80)}px`,
+                }}
+              />
+              <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+                {day.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 
   return (
@@ -557,7 +597,6 @@ function Index() {
                   {/* Desktop (≥1024px): between the heatmap and the donut. */}
                   {!hiddenWidgets.includes("previsao") && (
                     <div className="hidden rounded-xl border border-border bg-card p-3 lg:block">
-                      <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
                       {forecastBody}
                     </div>
                   )}
@@ -752,7 +791,6 @@ function Index() {
                   <>
                     {/* Mobile (<640px): right after "Foco de hoje". */}
                     <div className="order-2 rounded-xl border border-border bg-card p-4 sm:hidden">
-                      <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
                       {forecastBody}
                     </div>
                     {/* Tablet (640–1023px): above the calendar — order-4 ties
@@ -760,7 +798,6 @@ function Index() {
                         after it in the source, that tie is broken in our
                         favor (still before the calendar's order-5). */}
                     <div className="order-4 hidden rounded-xl border border-border bg-card p-4 sm:block lg:hidden">
-                      <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
                       {forecastBody}
                     </div>
                   </>
