@@ -65,6 +65,7 @@ import {
   bulkSetSuspended,
   bulkDeleteCards,
   listTrashedCards,
+  listStreakMisses,
   restoreCard,
   permanentlyDeleteCard,
   listCardEditLogs,
@@ -566,6 +567,12 @@ function FlashcardsPage() {
   const [studySessionMode, setStudySessionMode] = useState<"free" | "exam" | "read" | null>(null);
   const [showLeechesOnly, setShowLeechesOnly] = useState(false);
   const leechCards = cards.filter((c) => isLeech(c));
+  const fetchStreakMisses = useServerFn(listStreakMisses);
+  const { data: streakMissCards = [] } = useQuery({
+    queryKey: ["cards", "streakMisses"],
+    queryFn: () => fetchStreakMisses(),
+  });
+  const [showStreakMissesOnly, setShowStreakMissesOnly] = useState(false);
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const allTags = Array.from(new Set(cards.flatMap((c) => (c.tags ?? []) as string[]))).sort();
   const tagFilteredCards = activeTagFilter
@@ -575,6 +582,7 @@ function FlashcardsPage() {
 
   function toggleTagFilter(tag: string) {
     setShowLeechesOnly(false);
+    setShowStreakMissesOnly(false);
     setActiveTagFilter((prev) => (prev === tag ? null : tag));
   }
 
@@ -1738,10 +1746,24 @@ function FlashcardsPage() {
                       title={`Cards com ${LEECH_THRESHOLD}+ erros consecutivos`}
                       onClick={() => {
                         setActiveTagFilter(null);
+                        setShowStreakMissesOnly(false);
                         setShowLeechesOnly((v) => !v);
                       }}
                     >
                       Leeches ({leechCards.length})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={showStreakMissesOnly ? "default" : "outline"}
+                      className="h-9 shrink-0"
+                      title="Cards errados nas últimas 3 revisões seguidas"
+                      onClick={() => {
+                        setActiveTagFilter(null);
+                        setShowLeechesOnly(false);
+                        setShowStreakMissesOnly((v) => !v);
+                      }}
+                    >
+                      Errando seguido ({streakMissCards.length})
                     </Button>
                   </div>
 
@@ -1864,6 +1886,21 @@ function FlashcardsPage() {
                         </p>
                         <ul className="space-y-3">
                           {leechCards.map((card) => renderCardRow(card))}
+                        </ul>
+                      </div>
+                    )
+                  ) : showStreakMissesOnly ? (
+                    streakMissCards.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                        Nenhum card errado nas últimas 3 revisões seguidas — nada aqui por enquanto.
+                      </p>
+                    ) : (
+                      <div className="rounded-xl border border-border bg-card p-3">
+                        <p className="mb-3 text-xs text-muted-foreground">
+                          {streakMissCards.length} card(s) errado(s) nas últimas 3 revisões seguidas
+                        </p>
+                        <ul className="space-y-3">
+                          {streakMissCards.map((card) => renderCardRow(card))}
                         </ul>
                       </div>
                     )

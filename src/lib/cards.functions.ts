@@ -283,6 +283,48 @@ const TRASH_AUTO_PURGE_DAYS = 30;
  * window first — a lightweight sweep instead of a scheduled job, since
  * there's no cron infra in this app. Trashed decks are swept the same way,
  * but from listTrashedDecks — that's the screen that actually shows them. */
+const STREAK_MISS_COUNT = 3;
+
+/** Cards whose last STREAK_MISS_COUNT *real* reviews (not estudo livre —
+ * that never writes to review_logs) were all misses. Different signal from
+ * leech: lapses is a lifetime total that can be spread over months with
+ * successes in between, this is "wrong right now, in a row." */
+export const listStreakMisses = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: logs, error } = await context.supabase
+      .from("review_logs")
+      .select("card_id, was_correct")
+      .eq("user_id", context.userId)
+      .order("reviewed_at", { ascending: false })
+      .limit(3000);
+    if (error) throw new Error(error.message);
+
+    // Logs are newest-first, so the first STREAK_MISS_COUNT seen per card
+    // are exactly its most recent reviews.
+    const recentByCard = new Map<string, boolean[]>();
+    for (const row of logs ?? []) {
+      const seen = recentByCard.get(row.card_id) ?? [];
+      if (seen.length < STREAK_MISS_COUNT) {
+        seen.push(row.was_correct);
+        recentByCard.set(row.card_id, seen);
+      }
+    }
+    const missedCardIds = [...recentByCard.entries()]
+      .filter(([, seen]) => seen.length === STREAK_MISS_COUNT && seen.every((ok) => !ok))
+      .map(([id]) => id);
+    if (missedCardIds.length === 0) return [];
+
+    const { data: cards, error: cardsError } = await context.supabase
+      .from("cards")
+      .select("*")
+      .in("id", missedCardIds)
+      .eq("user_id", context.userId)
+      .is("deleted_at", null);
+    if (cardsError) throw new Error(cardsError.message);
+    return cards ?? [];
+  });
+
 export const listTrashedCards = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
