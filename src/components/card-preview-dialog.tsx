@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { explainCard, improveCard } from "@/lib/ai.functions";
+import { renderLiteMarkdown } from "@/lib/markdown-lite";
 import { Input } from "@/components/ui/input";
 import { isClozeText, maskCloze, revealCloze } from "@/components/cloze-editor";
 
@@ -161,7 +162,10 @@ export function CardPreviewDialog({
                 {editing ? (
                   <Input value={draftFront} onChange={(e) => setDraftFront(e.target.value)} />
                 ) : (
-                  <div className="whitespace-pre-wrap break-words text-base">{front}</div>
+                  <div
+                    className="whitespace-pre-wrap break-words text-base"
+                    dangerouslySetInnerHTML={{ __html: renderLiteMarkdown(front) }}
+                  />
                 )}
                 {card.image_url && showImageOnFront && (
                   <img
@@ -179,7 +183,10 @@ export function CardPreviewDialog({
                 {editing ? (
                   <Input value={draftBack} onChange={(e) => setDraftBack(e.target.value)} />
                 ) : (
-                  <div className="whitespace-pre-wrap break-words text-base">{back}</div>
+                  <div
+                    className="whitespace-pre-wrap break-words text-base"
+                    dangerouslySetInnerHTML={{ __html: renderLiteMarkdown(back) }}
+                  />
                 )}
                 {card.image_url && showImageOnBack && (
                   <img

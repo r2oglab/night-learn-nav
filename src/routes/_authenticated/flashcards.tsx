@@ -86,6 +86,7 @@ import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlu
 import ReviewSession from "@/components/review-session";
 import type { DeckRow } from "@/lib/deck-tree";
 import { isLeech, LEECH_THRESHOLD } from "@/lib/leech";
+import { renderLiteMarkdown } from "@/lib/markdown-lite";
 import { TagInput } from "@/components/tag-input";
 import {
   ClozeEditor,
@@ -774,6 +775,9 @@ function FlashcardsPage() {
                   onChange={(e) => setEditingQuestion(e.target.value)}
                 />
                 <Input value={editingAnswer} onChange={(e) => setEditingAnswer(e.target.value)} />
+                <p className="text-xs text-muted-foreground">
+                  <code>**negrito**</code>, <code>*itálico*</code>, <code>`código`</code>
+                </p>
               </label>
             )}
             <div className="mt-2 flex gap-2">
@@ -1040,13 +1044,29 @@ function FlashcardsPage() {
                 )}
                 {isClozeText(card.pergunta) ? (
                   <>
-                    <p className="font-medium">{maskCloze(card.pergunta)}</p>
-                    <p className="text-sm text-muted-foreground">{revealCloze(card.pergunta)}</p>
+                    <p
+                      className="font-medium"
+                      dangerouslySetInnerHTML={{
+                        __html: renderLiteMarkdown(maskCloze(card.pergunta)),
+                      }}
+                    />
+                    <p
+                      className="text-sm text-muted-foreground"
+                      dangerouslySetInnerHTML={{
+                        __html: renderLiteMarkdown(revealCloze(card.pergunta)),
+                      }}
+                    />
                   </>
                 ) : (
                   <>
-                    <p className="font-medium">{card.pergunta}</p>
-                    <p className="text-sm text-muted-foreground">{card.resposta}</p>
+                    <p
+                      className="font-medium"
+                      dangerouslySetInnerHTML={{ __html: renderLiteMarkdown(card.pergunta) }}
+                    />
+                    <p
+                      className="text-sm text-muted-foreground"
+                      dangerouslySetInnerHTML={{ __html: renderLiteMarkdown(card.resposta) }}
+                    />
                   </>
                 )}
                 <div className="mt-1 text-xs text-muted-foreground">{getPath(card.deck_id)}</div>

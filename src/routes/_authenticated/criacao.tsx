@@ -1285,6 +1285,10 @@ function CriacaoPage() {
                         placeholder="Escreva a resposta do card"
                       />
                     </label>
+                    <p className="text-xs text-muted-foreground">
+                      Formatação: <code>**negrito**</code>, <code>*itálico*</code>,{" "}
+                      <code>`código`</code> (pra fórmula/sigla)
+                    </p>
 
                     <label className="flex flex-col gap-2 text-sm text-muted-foreground">
                       Tags (opcional)

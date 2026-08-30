@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { compareAnswer, type DiffPart } from "@/lib/answer-diff";
 import { explainCard } from "@/lib/ai.functions";
 import { cn } from "@/lib/utils";
+import { renderLiteMarkdown } from "@/lib/markdown-lite";
 
 export type OcclusionRegion = {
   id: string;
@@ -634,14 +635,20 @@ export function ReviewSession({
                   {revealed && current.resposta && (
                     <div className="mt-4">
                       <div className="mb-1 text-sm text-muted-foreground">Resposta</div>
-                      <div className="text-base">{current.resposta}</div>
+                      <div
+                        className="text-base"
+                        dangerouslySetInnerHTML={{ __html: renderLiteMarkdown(current.resposta) }}
+                      />
                     </div>
                   )}
                 </div>
               ) : (
                 <>
                   <div className="mb-4 text-sm text-muted-foreground">Pergunta</div>
-                  <div className="text-base">{maskedQuestion}</div>
+                  <div
+                    className="text-base"
+                    dangerouslySetInnerHTML={{ __html: renderLiteMarkdown(maskedQuestion) }}
+                  />
                   {current?.image_url && showImageOnFront && (
                     <img
                       src={current.image_url}
@@ -693,9 +700,16 @@ export function ReviewSession({
                           )}
                         </div>
                       ) : (
-                        <div className="text-base">
-                          {isCloze ? (clozeFull ?? current?.resposta) : current?.resposta}
-                        </div>
+                        <div
+                          className="text-base"
+                          dangerouslySetInnerHTML={{
+                            __html: renderLiteMarkdown(
+                              isCloze
+                                ? (clozeFull ?? current?.resposta ?? "")
+                                : (current?.resposta ?? ""),
+                            ),
+                          }}
+                        />
                       )}
                       {current?.image_url && showImageOnBack && (
                         <img
