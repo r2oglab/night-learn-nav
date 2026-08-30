@@ -14,6 +14,7 @@ import { listDecks } from "@/lib/decks.functions";
 import { getHeatmapData } from "@/lib/cards.functions";
 import { getTodayFocus } from "@/lib/dashboard.functions";
 import { getUserSettings } from "@/lib/user_settings.functions";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -265,6 +266,21 @@ function Index() {
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
+  // Mobile default: just the current week — the full 6-row month grid is
+  // mostly empty cells on a narrow screen and pushes "Próximas revisões"
+  // way down the scroll. Desktop always shows the full month; mobile can
+  // still expand to it with the toggle below.
+  const isMobile = useIsMobile();
+  const [monthExpanded, setMonthExpanded] = useState(false);
+  const showFullMonth = !isMobile || monthExpanded || !isViewingCurrentMonth;
+  const displayedCells = showFullMonth
+    ? cells
+    : (() => {
+        const todayIdx = today != null ? cells.indexOf(today) : -1;
+        const weekStart = todayIdx >= 0 ? Math.floor(todayIdx / 7) * 7 : 0;
+        return cells.slice(weekStart, weekStart + 7);
+      })();
+
   // Mini calendar heatmap: same weekday-alignment technique as the main calendar,
   // padded with leading nulls so the grid lines up as real weeks (7 columns).
   const heatFirstWeekday = heatStart ? heatStart.getDay() : 0;
@@ -359,11 +375,11 @@ function Index() {
             </header>
 
             <main className="flex min-w-0 flex-1 justify-center p-3 sm:p-6">
-              <div className="w-full min-w-0 max-w-[1400px] basis-4/5 md:w-4/5">
+              <div className="flex w-full min-w-0 max-w-[1400px] basis-4/5 flex-col gap-4 md:w-4/5">
                 {!hiddenWidgets.includes("foco") &&
                   todayFocus &&
                   (todayFocus.dueCount > 0 || todayFocus.leechCount > 0) && (
-                    <div className="mb-4 rounded-xl border border-border bg-card p-4 sm:p-5">
+                    <div className="order-1 rounded-xl border border-border bg-card p-4 sm:p-5">
                       <h2 className="mb-2 text-sm font-medium text-muted-foreground">
                         Foco de hoje
                       </h2>
@@ -407,7 +423,7 @@ function Index() {
                     </div>
                   )}
 
-                <div className="mb-4 flex items-center gap-3">
+                <div className="order-3 flex items-center gap-3 sm:order-2">
                   <h2 className="text-xl font-semibold tracking-tight">{monthLabel}</h2>
                   {isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
                   <div className="ml-auto flex items-center gap-2">
@@ -447,10 +463,19 @@ function Index() {
                     </Button>
                   </div>
                 </div>
+                {isMobile && isViewingCurrentMonth && (
+                  <button
+                    type="button"
+                    onClick={() => setMonthExpanded((v) => !v)}
+                    className="order-3 -mt-3 text-xs text-muted-foreground underline underline-offset-2 sm:order-2"
+                  >
+                    {monthExpanded ? "Ver só esta semana" : "Ver mês completo"}
+                  </button>
+                )}
                 {overdueCount > 0 && (
                   <Link
                     to="/revisoes"
-                    className="mb-4 flex items-center justify-between rounded-xl border border-overdue/30 bg-overdue/10 px-4 py-3 text-sm text-overdue transition-colors hover:bg-overdue/20"
+                    className="order-4 flex items-center justify-between rounded-xl border border-overdue/30 bg-overdue/10 px-4 py-3 text-sm text-overdue transition-colors hover:bg-overdue/20 sm:order-3"
                   >
                     <span className="font-medium">
                       {overdueCount} card{overdueCount === 1 ? "" : "s"} atrasado
@@ -459,7 +484,7 @@ function Index() {
                     <span className="text-xs underline">Revisar agora</span>
                   </Link>
                 )}
-                <div className="mb-4 flex flex-col items-stretch gap-4 overflow-x-auto sm:grid sm:grid-cols-[auto_160px]">
+                <div className="order-5 flex flex-col items-stretch gap-4 overflow-x-auto sm:order-4 sm:grid sm:grid-cols-[auto_160px]">
                   {/* Mini calendar heatmap: last 5 weeks, aligned like the main calendar */}
                   <div className="inline-flex flex-col justify-center gap-1.5 justify-self-start rounded-xl border border-border bg-card p-3">
                     <div className="grid grid-cols-7 gap-1.5">
@@ -573,7 +598,7 @@ function Index() {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto rounded-xl border border-border bg-card">
+                <div className="order-6 overflow-x-auto rounded-xl border border-border bg-card sm:order-5">
                   <div className="grid grid-cols-7 border-b border-border">
                     {weekDays.map((d) => (
                       <div
@@ -586,7 +611,7 @@ function Index() {
                   </div>
 
                   <div className="grid grid-cols-7">
-                    {cells.map((day, i) => (
+                    {displayedCells.map((day, i) => (
                       <div
                         key={i}
                         className={cn(
@@ -609,7 +634,7 @@ function Index() {
                                 {day}
                               </span>
                             </div>
-                            <div className="space-y-1">
+                            <div className="flex flex-wrap gap-1 sm:block sm:space-y-1">
                               {/* reviewsByDay[day] is an array of DayGroup {deck, total, counts} */}
                               {((reviewsByDay[day] ?? []) as any[]).map((group, idx) => {
                                 // show only top 2; rest will be in 'Outros'
@@ -621,14 +646,26 @@ function Index() {
                                         ? "done"
                                         : "pending";
                                   return (
-                                    <div
-                                      key={group.deck}
-                                      className={cn(
-                                        "truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
-                                        statusStyles[status],
-                                      )}
-                                    >
-                                      {group.deck} · {group.total}
+                                    <div key={group.deck} title={`${group.deck} · ${group.total}`}>
+                                      {/* Mobile: a compact count badge — 7 narrow columns leave no
+                                          room for deck names, which truncated to unreadable "T...".
+                                          The full name is still one tap away via the title attr. */}
+                                      <span
+                                        className={cn(
+                                          "flex size-5 items-center justify-center rounded-full border text-[10px] font-medium sm:hidden",
+                                          statusStyles[status],
+                                        )}
+                                      >
+                                        {group.total}
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          "hidden truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium sm:block",
+                                          statusStyles[status],
+                                        )}
+                                      >
+                                        {group.deck} · {group.total}
+                                      </span>
                                     </div>
                                   );
                                 }
@@ -676,7 +713,7 @@ function Index() {
 
                 {/* Upcoming workload: helps plan around exam weeks. */}
                 {!hiddenWidgets.includes("previsao") && (
-                  <div className="mt-4 rounded-xl border border-border bg-card p-4">
+                  <div className="order-2 rounded-xl border border-border bg-card p-4 sm:order-6">
                     <h2 className="mb-3 text-sm font-medium">Próximas revisões</h2>
                     {forecast.every((d) => d.count === 0) ? (
                       <p className="text-sm text-muted-foreground">
