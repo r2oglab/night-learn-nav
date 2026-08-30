@@ -61,12 +61,18 @@ export function subtreeDeckIds(rootId: string, decks: ExportDeck[]): Set<string>
 
 /**
  * Build the CSV text for a set of cards. Passing `rootDeckId` narrows the
- * export to that deck and everything beneath it.
+ * export to that deck and everything beneath it. `originNote` (e.g. "PBL —
+ * Problema 4, Imunologia") is written as a `#origem:` line above the data —
+ * the same metadata-line convention this app's own importer already
+ * strips before parsing (built for Anki's `#separator:`/`#deck:` lines),
+ * so an unrecognized `#origem:` line is silently skipped on re-import
+ * instead of being mistaken for a card.
  */
 export function buildCardsCsv(
   cards: ExportCard[],
   decks: ExportDeck[],
   rootDeckId?: string,
+  originNote?: string,
 ): { csv: string; count: number } {
   const allowed = rootDeckId ? subtreeDeckIds(rootDeckId, decks) : null;
   const selected = allowed ? cards.filter((c) => allowed.has(c.deck_id)) : cards;
@@ -77,7 +83,12 @@ export function buildCardsCsv(
     c.resposta ?? "",
   ]);
 
-  return { csv: toCsv(["deck", "pergunta", "resposta"], rows), count: rows.length };
+  const trimmedNote = originNote?.trim();
+  const header = trimmedNote ? `#origem:${trimmedNote}\r\n` : "";
+  return {
+    csv: header + toCsv(["deck", "pergunta", "resposta"], rows),
+    count: rows.length,
+  };
 }
 
 /** Trigger a browser download for text content. */

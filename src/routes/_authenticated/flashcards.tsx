@@ -692,7 +692,12 @@ function FlashcardsPage() {
 
   /** Export a deck (and its subdecks) as CSV our own importer can read back. */
   function exportDeck(deck: any) {
-    const { csv, count } = buildCardsCsv(cards as any, decks as any, deck.id);
+    const originNote = window.prompt(
+      `Nota de origem pra esse export (opcional — ex: "PBL — Problema 4, Imunologia"). Deixe em branco pra pular:`,
+      "",
+    );
+    if (originNote === null) return; // cancelou o prompt
+    const { csv, count } = buildCardsCsv(cards as any, decks as any, deck.id, originNote);
     if (count === 0) {
       toast.info("Nenhum card para exportar neste deck.");
       return;
