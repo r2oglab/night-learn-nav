@@ -70,10 +70,11 @@ export function CardPreviewDialog({
     if (!card || explaining) return;
     setExplaining(true);
     try {
+      const previous = explanation ? { previous_explanation: explanation } : {};
       const result = await explain({
         data: card.id
-          ? { card_id: card.id, pergunta: card.pergunta, resposta: card.resposta }
-          : { pergunta: card.pergunta, resposta: card.resposta },
+          ? { card_id: card.id, pergunta: card.pergunta, resposta: card.resposta, ...previous }
+          : { pergunta: card.pergunta, resposta: card.resposta, ...previous },
       });
       setExplanation(result.explanation);
     } catch (err: unknown) {
@@ -300,7 +301,7 @@ export function CardPreviewDialog({
                   onClick={() => void handleExplain()}
                   className="shrink-0 text-xs text-sky-400 underline underline-offset-2 hover:text-sky-300 disabled:opacity-50"
                 >
-                  {explaining ? "Gerando..." : "Gerar novamente"}
+                  {explaining ? "Gerando..." : "Explicar de outro jeito"}
                 </button>
               </div>
               <div className="whitespace-pre-wrap leading-relaxed">{explanation}</div>

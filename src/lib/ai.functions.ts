@@ -507,17 +507,41 @@ Escreva uma explicação curta (no máximo 3 parágrafos) que ajude a ENTENDER, 
 por que é assim, como se conecta com o resto, e um erro comum ou pegadinha, se houver.
 Não repita literalmente a resposta do card. Não use listas longas nem markdown pesado.`;
 
+const EXPLAIN_AGAIN_SYSTEM = `Você explica conceitos para um estudante de medicina, em português do Brasil.
+
+Você já deu uma explicação antes (fornecida abaixo) e agora precisa dar uma NOVA explicação do
+MESMO conceito, com uma abordagem GENUINAMENTE diferente da anterior — troque a analogia, o
+ângulo de ataque, ou a forma de estruturar o raciocínio. Não é pra reescrever a mesma linha de
+raciocínio com outras palavras; é pra realmente mudar de estratégia.
+
+Escreva uma explicação curta (no máximo 3 parágrafos) que ajude a ENTENDER, não apenas decorar.
+Não repita literalmente a resposta do card. Não use listas longas nem markdown pesado.`;
+
 export const explainCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { card_id?: string; pergunta: string; resposta: string }) => {
-    const pergunta = input.pergunta?.trim();
-    if (!pergunta) throw new Error("Card sem pergunta.");
-    return { card_id: input.card_id, pergunta, resposta: input.resposta?.trim() ?? "" };
-  })
+  .inputValidator(
+    (input: {
+      card_id?: string;
+      pergunta: string;
+      resposta: string;
+      previous_explanation?: string;
+    }) => {
+      const pergunta = input.pergunta?.trim();
+      if (!pergunta) throw new Error("Card sem pergunta.");
+      return {
+        card_id: input.card_id,
+        pergunta,
+        resposta: input.resposta?.trim() ?? "",
+        previous_explanation: input.previous_explanation?.trim() || undefined,
+      };
+    },
+  )
   .handler(async ({ data, context }) => {
     const explanation = await callAi(
-      EXPLAIN_SYSTEM,
-      `Pergunta do card: ${data.pergunta}\nResposta do card: ${data.resposta}\n\nExplique esse assunto.`,
+      data.previous_explanation ? EXPLAIN_AGAIN_SYSTEM : EXPLAIN_SYSTEM,
+      data.previous_explanation
+        ? `Pergunta do card: ${data.pergunta}\nResposta do card: ${data.resposta}\n\nExplicação anterior (evite repetir esse ângulo):\n${data.previous_explanation}\n\nExplique esse assunto de outro jeito.`
+        : `Pergunta do card: ${data.pergunta}\nResposta do card: ${data.resposta}\n\nExplique esse assunto.`,
       1500,
     );
 

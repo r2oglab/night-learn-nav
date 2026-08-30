@@ -92,7 +92,12 @@ export function ReviewSession({
     setExplaining(true);
     try {
       const result = await explain({
-        data: { card_id: current.id, pergunta: current.pergunta, resposta: current.resposta },
+        data: {
+          card_id: current.id,
+          pergunta: current.pergunta,
+          resposta: current.resposta,
+          ...(explanation ? { previous_explanation: explanation } : {}),
+        },
       });
       setExplanation(result.explanation);
     } catch (err: unknown) {
@@ -719,7 +724,7 @@ export function ReviewSession({
                         onClick={() => void handleExplain()}
                         className="shrink-0 text-xs text-sky-400 underline underline-offset-2 hover:text-sky-300 disabled:opacity-50"
                       >
-                        {explaining ? "Gerando..." : "Gerar novamente"}
+                        {explaining ? "Gerando..." : "Explicar de outro jeito"}
                       </button>
                     </div>
                     <div className="whitespace-pre-wrap leading-relaxed">{explanation}</div>
