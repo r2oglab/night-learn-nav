@@ -79,6 +79,7 @@ import {
   applyFindReplace,
 } from "@/lib/cards.functions";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
 import { buildCardsCsv, downloadTextFile } from "@/lib/csv-export";
@@ -102,6 +103,7 @@ export const Route = createFileRoute("/_authenticated/flashcards")({
 });
 
 function FlashcardsPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const fetchDecks = useServerFn(listDecks);
   const fetchCards = useServerFn(listCards);
@@ -346,7 +348,8 @@ function FlashcardsPage() {
       // A cropped or text-annotated picture is a NEW file: upload it and
       // point every card of this set at it.
       if (file) {
-        const path = `${crypto.randomUUID()}.png`;
+        if (!user?.id) throw new Error("Sessão inválida — recarregue a página e tente de novo.");
+        const path = `${user.id}/${crypto.randomUUID()}.png`;
         const { error: uploadError } = await supabase.storage
           .from("card-images")
           .upload(path, file);

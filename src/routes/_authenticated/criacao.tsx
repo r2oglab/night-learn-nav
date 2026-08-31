@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
 import { createDeck } from "@/lib/decks.functions";
 import { generateCardsFromText, suggestMissingCards, transcribeFile } from "@/lib/ai.functions";
@@ -46,6 +47,7 @@ type DrawingRect = {
 };
 
 function CriacaoPage() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const addCard = useServerFn(createCard);
   const createNewDeck = useServerFn(createDeck);
@@ -528,7 +530,8 @@ function CriacaoPage() {
       if (!deckRow?.id) throw new Error("Não foi possível resolver/usar o deck.");
 
       const ext = occlusionFile.name.split(".").pop() || "png";
-      const path = `${crypto.randomUUID()}.${ext}`;
+      if (!user?.id) throw new Error("Sessão inválida — recarregue a página e tente de novo.");
+      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from("card-images")
         .upload(path, occlusionFile);
@@ -705,7 +708,10 @@ function CriacaoPage() {
                     let imageUrl: string | undefined;
                     if (attachedImageFile && !cloze) {
                       const ext = attachedImageFile.name.split(".").pop() || "png";
-                      const path = `${crypto.randomUUID()}.${ext}`;
+                      if (!user?.id) {
+                        throw new Error("Sessão inválida — recarregue a página e tente de novo.");
+                      }
+                      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
                       const { error: uploadError } = await supabase.storage
                         .from("card-images")
                         .upload(path, attachedImageFile);
