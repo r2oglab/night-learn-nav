@@ -9,6 +9,7 @@ import {
   Search,
   X,
   Download,
+  FileJson,
   Eye,
   Pencil,
   Trash2,
@@ -83,6 +84,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { CardPreviewDialog, type PreviewCard } from "@/components/card-preview-dialog";
 import { buildCardsCsv, downloadTextFile } from "@/lib/csv-export";
+import { exportDeckBackup } from "@/lib/backup.functions";
 import { ImageOcclusionEditor, type RegionDraft } from "@/components/image-occlusion-editor";
 import ReviewSession from "@/components/review-session";
 import type { DeckRow } from "@/lib/deck-tree";
@@ -709,6 +711,32 @@ function FlashcardsPage() {
     const safeName = deck.name.replace(/[^\p{L}\p{N}_-]+/gu, "_");
     downloadTextFile(`${safeName}_${new Date().toISOString().slice(0, 10)}.csv`, csv);
     toast.success(`${count} card(s) exportado(s)`);
+  }
+
+  const fetchDeckBackup = useServerFn(exportDeckBackup);
+  const [exportingJsonId, setExportingJsonId] = useState<string | null>(null);
+  /** Export a deck (and its subdecks) as JSON — full fidelity (FSRS state,
+   * tags, notes, occlusion), reimportable via Criação's "Restaurar"/
+   * "Mesclar". CSV only ever carries pergunta/resposta/deck. */
+  async function exportDeckJson(deck: { id: string; name: string }) {
+    setExportingJsonId(deck.id);
+    try {
+      const backup = await fetchDeckBackup({ data: { deck_id: deck.id } });
+      if (backup.cards.length === 0) {
+        toast.info("Nenhum card para exportar neste deck.");
+        return;
+      }
+      const safeName = deck.name.replace(/[^\p{L}\p{N}_-]+/gu, "_");
+      downloadTextFile(
+        `${safeName}_${new Date().toISOString().slice(0, 10)}.json`,
+        JSON.stringify(backup, null, 2),
+      );
+      toast.success(`${backup.cards.length} card(s) exportado(s)`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportingJsonId(null);
+    }
   }
 
   const [query, setQuery] = useState("");
@@ -1437,6 +1465,17 @@ function FlashcardsPage() {
                 >
                   <Download className="size-3.5" />
                   <span className="sr-only">Exportar deck</span>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Exportar deck (JSON) — fidelidade completa, reimportável em Criação"
+                  disabled={exportingJsonId === deck.id}
+                  onClick={() => void exportDeckJson(deck)}
+                >
+                  <FileJson className="size-3.5" />
+                  <span className="sr-only">Exportar deck em JSON</span>
                 </Button>
                 <Button
                   size="icon"
