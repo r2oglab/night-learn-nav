@@ -36,7 +36,8 @@ export const getModuleComparison = createServerFn({ method: "GET" })
     const { data: decks, error: decksError } = await context.supabase
       .from("decks")
       .select("id,name,parent_id")
-      .eq("user_id", context.userId);
+      .eq("user_id", context.userId)
+      .is("deleted_at", null);
     if (decksError) throw new Error(decksError.message);
 
     const { data: logs, error: logsError } = await context.supabase
