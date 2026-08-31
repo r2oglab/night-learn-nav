@@ -14,6 +14,8 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { createCard, createImageOcclusionCards, importCards } from "@/lib/cards.functions";
+import { previewJsonImport, applyJsonImport } from "@/lib/json-import.functions";
+import { previewStructuredImport, applyStructuredImport } from "@/lib/json-import.functions";
 import { createDeck } from "@/lib/decks.functions";
 import { generateCardsFromText, suggestMissingCards, transcribeFile } from "@/lib/ai.functions";
 import { extractTextFromFile } from "@/lib/file-text-extract";
@@ -143,6 +145,161 @@ function CriacaoPage() {
   const [csvAutoTag, setCsvAutoTag] = useState("");
   const [importing, setImporting] = useState(false);
   const runImport = useServerFn(importCards);
+
+  // JSON import: restaurar (traz de volta só o que sumiu, IDs originais) ou
+  // mesclar (importa como cópia nova, decks casados por nome/caminho).
+  const [jsonFileName, setJsonFileName] = useState("");
+  const [jsonParsed, setJsonParsed] = useState<{ decks: unknown; cards: unknown } | null>(null);
+  const [jsonMode, setJsonMode] = useState<"restore" | "merge">("restore");
+  const runPreviewJson = useServerFn(previewJsonImport);
+  const runApplyJson = useServerFn(applyJsonImport);
+  const [jsonPreview, setJsonPreview] = useState<
+    | {
+        mode: "restore";
+        missingDeckCount: number;
+        missingCardCount: number;
+        missingDeckNames: string[];
+        alreadyPresentDeckCount: number;
+        alreadyPresentCardCount: number;
+      }
+    | { mode: "merge"; deckCount: number; cardCount: number }
+    | null
+  >(null);
+  const [jsonPreviewing, setJsonPreviewing] = useState(false);
+  const [jsonApplying, setJsonApplying] = useState(false);
+
+  // Segunda variante de JSON aceita: criação em massa, formato aninhado
+  // (deck -> subdecks -> cards, front/back, sem id nenhum) — é o que sai
+  // quando se pede "gere flashcards organizados por deck" em outra
+  // conversa. Detectado automaticamente, junto do de backup.
+  const [structuredParsed, setStructuredParsed] = useState<{ decks: unknown[] } | null>(null);
+  const runPreviewStructured = useServerFn(previewStructuredImport);
+  const runApplyStructured = useServerFn(applyStructuredImport);
+  const [structuredPreview, setStructuredPreview] = useState<{
+    deckPathCount: number;
+    cardCount: number;
+    imageWarningCount: number;
+    samplePaths: string[];
+  } | null>(null);
+  const [structuredPreviewing, setStructuredPreviewing] = useState(false);
+  const [structuredApplying, setStructuredApplying] = useState(false);
+
+  function isStructuredJsonShape(obj: { decks?: unknown }): obj is { decks: unknown[] } {
+    if (!Array.isArray(obj.decks)) return false;
+    return obj.decks.every(
+      (d) =>
+        d && typeof d === "object" && ("subdecks" in d || "cards" in d) && !("id" in (d as object)),
+    );
+  }
+
+  async function handleJsonFile(file: File) {
+    setJsonFileName(file.name);
+    setJsonPreview(null);
+    setJsonParsed(null);
+    setStructuredParsed(null);
+    setStructuredPreview(null);
+    try {
+      const text = await file.text();
+      const obj = JSON.parse(text) as { decks?: unknown; cards?: unknown };
+      if (Array.isArray(obj.decks) && Array.isArray(obj.cards)) {
+        setJsonParsed({ decks: obj.decks, cards: obj.cards });
+        return;
+      }
+      if (isStructuredJsonShape(obj)) {
+        setStructuredParsed({ decks: obj.decks });
+        return;
+      }
+      toast.error(
+        "Arquivo não reconhecido — esperava um backup do Estuda ou um JSON de criação em massa (deck/subdeck/cards).",
+      );
+    } catch {
+      toast.error("Não consegui ler esse arquivo como JSON.");
+    }
+  }
+
+  async function handlePreviewStructured() {
+    if (!structuredParsed) return;
+    setStructuredPreviewing(true);
+    try {
+      const result = await runPreviewStructured({ data: { data: structuredParsed } });
+      setStructuredPreview(result);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStructuredPreviewing(false);
+    }
+  }
+
+  async function handleApplyStructured() {
+    if (!structuredParsed) return;
+    if (!window.confirm(`Criar ${structuredPreview?.cardCount ?? "esses"} card(s) novo(s)?`)) {
+      return;
+    }
+    setStructuredApplying(true);
+    try {
+      const result = await runApplyStructured({
+        data: {
+          data: structuredParsed,
+          tz_offset_minutes: new Date().getTimezoneOffset(),
+        },
+      });
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      toast.success(`${result.deckCount} deck(s) e ${result.cardCount} card(s) criado(s)`);
+      if (result.imageWarningCount > 0) {
+        toast.info(
+          `${result.imageWarningCount} card(s) marcado(s) com a tag "sem-imagem" — precisam de imagem manual.`,
+        );
+      }
+      setStructuredParsed(null);
+      setJsonFileName("");
+      setStructuredPreview(null);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStructuredApplying(false);
+    }
+  }
+
+  async function handlePreviewJson() {
+    if (!jsonParsed) return;
+    setJsonPreviewing(true);
+    try {
+      const result = await runPreviewJson({
+        data: { mode: jsonMode, decks: jsonParsed.decks, cards: jsonParsed.cards },
+      });
+      setJsonPreview(result);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setJsonPreviewing(false);
+    }
+  }
+
+  async function handleApplyJson() {
+    if (!jsonParsed) return;
+    const confirmMsg =
+      jsonMode === "restore"
+        ? "Restaurar vai trazer de volta só o que não existe mais na sua conta — nada que já existe é alterado. Confirma?"
+        : "Mesclar vai criar cópias novas de tudo (cards começam do zero no FSRS). Confirma?";
+    if (!window.confirm(confirmMsg)) return;
+    setJsonApplying(true);
+    try {
+      const result = await runApplyJson({
+        data: { mode: jsonMode, decks: jsonParsed.decks, cards: jsonParsed.cards },
+      });
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      toast.success(`${result.deckCount} deck(s) e ${result.cardCount} card(s) importado(s)`);
+      setJsonParsed(null);
+      setJsonFileName("");
+      setJsonPreview(null);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setJsonApplying(false);
+    }
+  }
 
   // AI generation: proposals live in local state until the user accepts them,
   // so nothing reaches the deck without a look first.
@@ -619,9 +776,14 @@ function CriacaoPage() {
                 className="mb-6 grid gap-3"
                 onSubmit={async (event) => {
                   event.preventDefault();
-                  // Import carries a deck per row (or falls back to a default),
-                  // so the deck field isn't required for it.
+                  // Import: JSON has its own dedicated buttons (Pré-visualizar/
+                  // Restaurar/Mesclar) — this form's submit is never meant to
+                  // fire while a JSON file is loaded, but guard anyway rather
+                  // than fall through to the plain-card branch with empty
+                  // pergunta/resposta. CSV keeps using the shared submit
+                  // button below, same as always.
                   if (cardType === "importar") {
+                    if (jsonParsed || structuredParsed) return;
                     await handleImportSubmit();
                     return;
                   }
@@ -790,7 +952,7 @@ function CriacaoPage() {
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <RadioGroupItem value="importar" />
-                    <span className="text-muted-foreground">Importar CSV</span>
+                    <span className="text-muted-foreground">Importar</span>
                   </label>
                 </RadioGroup>
 
@@ -967,27 +1129,195 @@ function CriacaoPage() {
                   </div>
                 ) : cardType === "importar" ? (
                   <div className="grid gap-3">
-                    {!csvPreview ? (
+                    {jsonParsed ? (
+                      <>
+                        <div className="flex flex-wrap gap-4 rounded-lg border border-border p-3 text-sm">
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="json-mode"
+                              checked={jsonMode === "restore"}
+                              onChange={() => {
+                                setJsonMode("restore");
+                                setJsonPreview(null);
+                              }}
+                            />
+                            Restaurar (recupera só o que sumiu, mantém IDs originais)
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="json-mode"
+                              checked={jsonMode === "merge"}
+                              onChange={() => {
+                                setJsonMode("merge");
+                                setJsonPreview(null);
+                              }}
+                            />
+                            Mesclar (importa tudo como cópia nova — outro backup/conta)
+                          </label>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{jsonFileName}</span>
+                          <button
+                            type="button"
+                            className="underline underline-offset-2"
+                            onClick={() => {
+                              setJsonParsed(null);
+                              setJsonFileName("");
+                              setJsonPreview(null);
+                            }}
+                          >
+                            Trocar arquivo
+                          </button>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={jsonPreviewing}
+                          onClick={() => void handlePreviewJson()}
+                        >
+                          {jsonPreviewing ? "Analisando..." : "Pré-visualizar"}
+                        </Button>
+
+                        {jsonPreview && jsonPreview.mode === "restore" && (
+                          <div className="rounded-lg border border-border p-3 text-sm">
+                            <p>
+                              <strong>{jsonPreview.missingDeckCount}</strong> deck(s) e{" "}
+                              <strong>{jsonPreview.missingCardCount}</strong> card(s) que não
+                              existem mais na sua conta seriam restaurados.
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {jsonPreview.alreadyPresentDeckCount} deck(s) e{" "}
+                              {jsonPreview.alreadyPresentCardCount} card(s) do backup já existem —
+                              esses não são tocados.
+                            </p>
+                            {jsonPreview.missingDeckNames.length > 0 && (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Decks a restaurar: {jsonPreview.missingDeckNames.join(", ")}
+                                {jsonPreview.missingDeckCount > jsonPreview.missingDeckNames.length
+                                  ? "..."
+                                  : ""}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {jsonPreview && jsonPreview.mode === "merge" && (
+                          <div className="rounded-lg border border-border p-3 text-sm">
+                            <p>
+                              <strong>{jsonPreview.deckCount}</strong> deck(s) e{" "}
+                              <strong>{jsonPreview.cardCount}</strong> card(s) seriam criados como
+                              cópia nova (FSRS zerado, decks casados por nome quando já existirem).
+                            </p>
+                          </div>
+                        )}
+
+                        {jsonPreview && (
+                          <Button
+                            type="button"
+                            disabled={jsonApplying}
+                            onClick={() => void handleApplyJson()}
+                          >
+                            {jsonApplying
+                              ? "Importando..."
+                              : jsonMode === "restore"
+                                ? "Restaurar"
+                                : "Mesclar"}
+                          </Button>
+                        )}
+                      </>
+                    ) : structuredParsed ? (
+                      <>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{jsonFileName} — criação em massa (deck/subdeck/cards)</span>
+                          <button
+                            type="button"
+                            className="underline underline-offset-2"
+                            onClick={() => {
+                              setStructuredParsed(null);
+                              setJsonFileName("");
+                              setStructuredPreview(null);
+                            }}
+                          >
+                            Trocar arquivo
+                          </button>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={structuredPreviewing}
+                          onClick={() => void handlePreviewStructured()}
+                        >
+                          {structuredPreviewing ? "Analisando..." : "Pré-visualizar"}
+                        </Button>
+
+                        {structuredPreview && (
+                          <div className="rounded-lg border border-border p-3 text-sm">
+                            <p>
+                              <strong>{structuredPreview.cardCount}</strong> card(s) novo(s) em{" "}
+                              <strong>{structuredPreview.deckPathCount}</strong> deck(s)/subdeck(s)
+                              (criados se ainda não existirem).
+                            </p>
+                            {structuredPreview.imageWarningCount > 0 && (
+                              <p className="mt-1 text-xs text-amber-500">
+                                {structuredPreview.imageWarningCount} card(s) marcavam imagem que
+                                esse formato não carrega — vão ser criados sem imagem, com a tag
+                                "sem-imagem" pra você completar depois.
+                              </p>
+                            )}
+                            {structuredPreview.samplePaths.length > 0 && (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Caminhos: {structuredPreview.samplePaths.join(", ")}
+                                {structuredPreview.deckPathCount >
+                                structuredPreview.samplePaths.length
+                                  ? "..."
+                                  : ""}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {structuredPreview && (
+                          <Button
+                            type="button"
+                            disabled={structuredApplying}
+                            onClick={() => void handleApplyStructured()}
+                          >
+                            {structuredApplying
+                              ? "Criando..."
+                              : `Criar ${structuredPreview.cardCount} card(s)`}
+                          </Button>
+                        )}
+                      </>
+                    ) : !csvPreview ? (
                       <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                         <p>
                           <label className="cursor-pointer text-sky-400 underline underline-offset-2 hover:text-sky-300">
                             Escolha um arquivo
                             <input
                               type="file"
-                              accept=".csv,.txt,text/csv,text/plain"
+                              accept=".csv,.txt,.json,text/csv,text/plain,application/json"
                               className="hidden"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
-                                if (file) void handleCsvFile(file);
+                                if (!file) return;
+                                if (file.name.toLowerCase().endsWith(".json")) {
+                                  void handleJsonFile(file);
+                                } else {
+                                  void handleCsvFile(file);
+                                }
                               }}
                             />
                           </label>{" "}
-                          .csv ou .txt exportado do Anki, Excel ou similar
+                          .csv, .txt (Anki, Excel ou similar) ou .json (backup completo)
                         </p>
                         <p className="text-xs">
-                          Formato aceito: 2 colunas (pergunta, resposta) ou 3 colunas (deck,
-                          pergunta, resposta). Separador vírgula, ponto-e-vírgula ou tabulação —
-                          detectado automaticamente.
+                          CSV/TXT: 2 colunas (pergunta, resposta) ou 3 colunas (deck, pergunta,
+                          resposta). Separador vírgula, ponto-e-vírgula ou tabulação — detectado
+                          automaticamente.
                         </p>
                       </div>
                     ) : (
@@ -1388,54 +1718,56 @@ function CriacaoPage() {
                   </Button>
                 )}
 
-                <Button
-                  type="submit"
-                  disabled={
-                    cardType === "ia"
-                      ? generating ||
-                        (aiProposals
-                          ? aiAccepted.size === 0
-                          : suggestMissingMode
-                            ? !deckPath.trim() || aiSource.trim().length < 40
-                            : aiSource.trim().length < 40)
+                {!(cardType === "importar" && (jsonParsed || structuredParsed)) && (
+                  <Button
+                    type="submit"
+                    disabled={
+                      cardType === "ia"
+                        ? generating ||
+                          (aiProposals
+                            ? aiAccepted.size === 0
+                            : suggestMissingMode
+                              ? !deckPath.trim() || aiSource.trim().length < 40
+                              : aiSource.trim().length < 40)
+                        : cardType === "importar"
+                          ? importing || !csvPreview || csvPreview.length === 0
+                          : cardType === "oclusao"
+                            ? uploading || !occlusionFile || regions.length === 0
+                            : cloze
+                              ? create.isPending || !clozeText.trim() || !hasHiddenWord
+                              : create.isPending || !question.trim() || !answer.trim()
+                    }
+                  >
+                    {(
+                      cardType === "ia"
+                        ? generating
+                        : cardType === "importar"
+                          ? importing
+                          : cardType === "oclusao"
+                            ? uploading
+                            : create.isPending
+                    ) ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : cardType === "ia" ? (
+                      <Sparkles className="size-4" />
+                    ) : cardType === "importar" ? (
+                      <Upload className="size-4" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    {cardType === "ia"
+                      ? aiProposals
+                        ? `Criar ${aiAccepted.size} card(s)`
+                        : suggestMissingMode
+                          ? "Analisar lacunas"
+                          : "Gerar cards"
                       : cardType === "importar"
-                        ? importing || !csvPreview || csvPreview.length === 0
+                        ? `Importar ${csvPreview?.length ?? ""} card(s)`
                         : cardType === "oclusao"
-                          ? uploading || !occlusionFile || regions.length === 0
-                          : cloze
-                            ? create.isPending || !clozeText.trim() || !hasHiddenWord
-                            : create.isPending || !question.trim() || !answer.trim()
-                  }
-                >
-                  {(
-                    cardType === "ia"
-                      ? generating
-                      : cardType === "importar"
-                        ? importing
-                        : cardType === "oclusao"
-                          ? uploading
-                          : create.isPending
-                  ) ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : cardType === "ia" ? (
-                    <Sparkles className="size-4" />
-                  ) : cardType === "importar" ? (
-                    <Upload className="size-4" />
-                  ) : (
-                    <Plus className="size-4" />
-                  )}
-                  {cardType === "ia"
-                    ? aiProposals
-                      ? `Criar ${aiAccepted.size} card(s)`
-                      : suggestMissingMode
-                        ? "Analisar lacunas"
-                        : "Gerar cards"
-                    : cardType === "importar"
-                      ? `Importar ${csvPreview?.length ?? ""} card(s)`
-                      : cardType === "oclusao"
-                        ? `Criar ${regions.length || ""} card(s)`
-                        : "Criar card"}
-                </Button>
+                          ? `Criar ${regions.length || ""} card(s)`
+                          : "Criar card"}
+                  </Button>
+                )}
               </form>
             </div>
           </main>
