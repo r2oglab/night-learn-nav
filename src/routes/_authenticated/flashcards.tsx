@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Loader2,
@@ -40,7 +40,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import {
@@ -615,6 +614,17 @@ function FlashcardsPage() {
   const filteredTagList = tagSearch.trim()
     ? allTags.filter((t) => t.toLowerCase().includes(tagSearch.trim().toLowerCase()))
     : allTags;
+  const tagPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!tagPanelOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (tagPanelRef.current && !tagPanelRef.current.contains(e.target as Node)) {
+        setTagPanelOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [tagPanelOpen]);
   const tagFilteredCards = activeTagFilter
     ? cards.filter((c) => ((c.tags ?? []) as string[]).includes(activeTagFilter))
     : [];
@@ -2027,64 +2037,67 @@ function FlashcardsPage() {
                   )}
 
                   {allTags.length > 0 && (
-                    <Popover open={tagPanelOpen} onOpenChange={setTagPanelOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant={activeTagFilter ? "default" : "outline"}
-                          className="h-8"
-                        >
-                          {activeTagFilter ? `Tag: ${activeTagFilter}` : `Tags (${allTags.length})`}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" className="w-80 p-3">
-                        <Input
-                          autoFocus
-                          placeholder="Buscar tag..."
-                          value={tagSearch}
-                          onChange={(e) => setTagSearch(e.target.value)}
-                          className="mb-2 h-8"
-                        />
-                        <div className="flex max-h-64 flex-wrap gap-1.5 overflow-y-auto">
-                          {filteredTagList.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">Nenhuma tag encontrada.</p>
-                          ) : (
-                            filteredTagList.map((tag) => (
-                              <button
-                                key={tag}
-                                type="button"
-                                onClick={() => {
-                                  toggleTagFilter(tag);
-                                  setTagPanelOpen(false);
-                                  setTagSearch("");
-                                }}
-                                className={cn(
-                                  "rounded-full px-2 py-0.5 text-xs",
-                                  activeTagFilter === tag
-                                    ? "bg-sky-500 text-white"
-                                    : "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25",
-                                )}
-                              >
-                                {tag}
-                              </button>
-                            ))
+                    <div className="relative" ref={tagPanelRef}>
+                      <Button
+                        size="sm"
+                        variant={activeTagFilter ? "default" : "outline"}
+                        className="h-8"
+                        onClick={() => setTagPanelOpen((v) => !v)}
+                      >
+                        {activeTagFilter ? `Tag: ${activeTagFilter}` : `Tags (${allTags.length})`}
+                      </Button>
+                      {tagPanelOpen && (
+                        <div className="absolute left-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md">
+                          <Input
+                            autoFocus
+                            placeholder="Buscar tag..."
+                            value={tagSearch}
+                            onChange={(e) => setTagSearch(e.target.value)}
+                            className="mb-2 h-8"
+                          />
+                          <div className="flex max-h-64 flex-wrap gap-1.5 overflow-y-auto">
+                            {filteredTagList.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">
+                                Nenhuma tag encontrada.
+                              </p>
+                            ) : (
+                              filteredTagList.map((tag) => (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() => {
+                                    toggleTagFilter(tag);
+                                    setTagPanelOpen(false);
+                                    setTagSearch("");
+                                  }}
+                                  className={cn(
+                                    "rounded-full px-2 py-0.5 text-xs",
+                                    activeTagFilter === tag
+                                      ? "bg-sky-500 text-white"
+                                      : "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25",
+                                  )}
+                                >
+                                  {tag}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                          {activeTagFilter && (
+                            <button
+                              type="button"
+                              className="mt-2 text-xs text-muted-foreground underline underline-offset-2"
+                              onClick={() => {
+                                setActiveTagFilter(null);
+                                setTagPanelOpen(false);
+                                setTagSearch("");
+                              }}
+                            >
+                              Limpar filtro de tag
+                            </button>
                           )}
                         </div>
-                        {activeTagFilter && (
-                          <button
-                            type="button"
-                            className="mt-2 text-xs text-muted-foreground underline underline-offset-2"
-                            onClick={() => {
-                              setActiveTagFilter(null);
-                              setTagPanelOpen(false);
-                              setTagSearch("");
-                            }}
-                          >
-                            Limpar filtro de tag
-                          </button>
-                        )}
-                      </PopoverContent>
-                    </Popover>
+                      )}
+                    </div>
                   )}
 
                   {searchResults ? (
