@@ -1136,3 +1136,65 @@ export const setCardSuspended = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return updated;
   });
+
+/** One-off cleanup: strips any tag that just repeats the card's own deck
+ * or an ancestor deck's name (redundant with the hierarchy the card
+ * already lives in — a leftover from importing a JSON that pre-filled
+ * tags with deck/subdeck names), plus the literal "imagem" tag on any
+ * card that also carries "sem-imagem" (same signal, opposite direction).
+ * Never touches a tag that doesn't match this exact pattern. */
+export const cleanupDeckNameTags = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: decks, error: decksError } = await context.supabase
+      .from("decks")
+      .select("id,name,parent_id")
+      .eq("user_id", context.userId);
+    if (decksError) throw new Error(decksError.message);
+
+    const byId = new Map(
+      (decks ?? []).map((d) => [d.id, d as { id: string; name: string; parent_id: string | null }]),
+    );
+    function pathNamesOf(deckId: string): Set<string> {
+      const names = new Set<string>();
+      let cur = byId.get(deckId);
+      let guard = 0;
+      while (cur && guard < 50) {
+        names.add(cur.name.toLowerCase());
+        cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+        guard++;
+      }
+      return names;
+    }
+
+    const { data: cards, error: cardsError } = await context.supabase
+      .from("cards")
+      .select("id,deck_id,tags")
+      .eq("user_id", context.userId)
+      .is("deleted_at", null);
+    if (cardsError) throw new Error(cardsError.message);
+
+    let updatedCount = 0;
+    for (const card of cards ?? []) {
+      const tags = ((card as { tags: string[] | null }).tags ?? []) as string[];
+      if (tags.length === 0) continue;
+      const pathNames = pathNamesOf((card as { deck_id: string }).deck_id);
+      const hasImagelessTag = tags.some((t) => t.toLowerCase() === "sem-imagem");
+      const cleaned = tags.filter((t) => {
+        const lower = t.toLowerCase();
+        if (pathNames.has(lower)) return false;
+        if (lower === "imagem" && hasImagelessTag) return false;
+        return true;
+      });
+      if (cleaned.length !== tags.length) {
+        const { error: updateError } = await context.supabase
+          .from("cards")
+          .update({ tags: cleaned })
+          .eq("id", (card as { id: string }).id)
+          .eq("user_id", context.userId);
+        if (!updateError) updatedCount++;
+      }
+    }
+
+    return { updatedCount };
+  });

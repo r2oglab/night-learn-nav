@@ -414,15 +414,25 @@ export const applyStructuredImport = createServerFn({ method: "POST" })
       const deckId = await resolvePath(group.path);
       deckCount++;
 
+      // The deck path (already implied by where the card lives) is
+      // redundant as a tag — strip any tag that just repeats a deck/
+      // subdeck name from this card's own path. "imagem" is dropped too:
+      // it says the same thing as the "sem-imagem" marker below, just
+      // from the other direction.
+      const pathNames = new Set(group.path.map((s) => s.toLowerCase()));
       const rows = group.cards.map((c) => {
         const hasImage = !!c.has_image;
         if (hasImage) imageWarningCount++;
+        const meaningfulTags = (c.tags ?? []).filter((t) => {
+          const lower = t.toLowerCase();
+          return !pathNames.has(lower) && lower !== "imagem";
+        });
         return {
           user_id: context.userId,
           deck_id: deckId,
           pergunta: c.front,
           resposta: c.back,
-          tags: [...(c.tags ?? []), ...(hasImage ? ["sem-imagem"] : [])],
+          tags: [...meaningfulTags, ...(hasImage ? ["sem-imagem"] : [])],
           note: hasImage && c.image_note ? `Imagem pendente: ${c.image_note}` : null,
           card_type: mapCardType(c.type),
           ...newCardFields(data.tz_offset_minutes),

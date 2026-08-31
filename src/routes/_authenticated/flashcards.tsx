@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import {
@@ -67,6 +68,7 @@ import {
   duplicateCard,
   bulkMoveCards,
   bulkSetSuspended,
+  cleanupDeckNameTags,
   bulkDeleteCards,
   listTrashedCards,
   listStreakMisses,
@@ -252,6 +254,19 @@ function FlashcardsPage() {
       void queryClient.invalidateQueries({ queryKey: ["decks"] });
       void queryClient.invalidateQueries({ queryKey: ["cards"] });
       toast.success(vars.archived ? "Deck arquivado" : "Deck desarquivado");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+  const runCleanupTags = useServerFn(cleanupDeckNameTags);
+  const cleanupTagsMutation = useMutation({
+    mutationFn: () => runCleanupTags(),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      toast.success(
+        result.updatedCount === 0
+          ? "Nenhuma tag redundante encontrada."
+          : `${result.updatedCount} card(s) limpo(s).`,
+      );
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -595,6 +610,11 @@ function FlashcardsPage() {
   const [showStreakMissesOnly, setShowStreakMissesOnly] = useState(false);
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const allTags = Array.from(new Set(cards.flatMap((c) => (c.tags ?? []) as string[]))).sort();
+  const [tagPanelOpen, setTagPanelOpen] = useState(false);
+  const [tagSearch, setTagSearch] = useState("");
+  const filteredTagList = tagSearch.trim()
+    ? allTags.filter((t) => t.toLowerCase().includes(tagSearch.trim().toLowerCase()))
+    : allTags;
   const tagFilteredCards = activeTagFilter
     ? cards.filter((c) => ((c.tags ?? []) as string[]).includes(activeTagFilter))
     : [];
@@ -1647,6 +1667,23 @@ function FlashcardsPage() {
                   >
                     {showFindReplace ? "Fechar busca/substituição" : "Buscar e substituir"}
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={cleanupTagsMutation.isPending}
+                    title="Remove tag que só repete o nome do próprio deck ou de um deck acima dele"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Remover, de todo card, qualquer tag que só repita o nome do deck (ou de um deck acima) em que ele está? Não mexe em nenhuma outra tag.",
+                        )
+                      ) {
+                        cleanupTagsMutation.mutate();
+                      }
+                    }}
+                  >
+                    {cleanupTagsMutation.isPending ? "Limpando..." : "Limpar tags de deck"}
+                  </Button>
                 </div>
               </div>
               {showFindReplace && (
@@ -1990,23 +2027,64 @@ function FlashcardsPage() {
                   )}
 
                   {allTags.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {allTags.map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => toggleTagFilter(tag)}
-                          className={cn(
-                            "rounded-full px-2 py-0.5 text-xs",
-                            activeTagFilter === tag
-                              ? "bg-sky-500 text-white"
-                              : "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25",
-                          )}
+                    <Popover open={tagPanelOpen} onOpenChange={setTagPanelOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant={activeTagFilter ? "default" : "outline"}
+                          className="h-8"
                         >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
+                          {activeTagFilter ? `Tag: ${activeTagFilter}` : `Tags (${allTags.length})`}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-80 p-3">
+                        <Input
+                          autoFocus
+                          placeholder="Buscar tag..."
+                          value={tagSearch}
+                          onChange={(e) => setTagSearch(e.target.value)}
+                          className="mb-2 h-8"
+                        />
+                        <div className="flex max-h-64 flex-wrap gap-1.5 overflow-y-auto">
+                          {filteredTagList.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Nenhuma tag encontrada.</p>
+                          ) : (
+                            filteredTagList.map((tag) => (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => {
+                                  toggleTagFilter(tag);
+                                  setTagPanelOpen(false);
+                                  setTagSearch("");
+                                }}
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 text-xs",
+                                  activeTagFilter === tag
+                                    ? "bg-sky-500 text-white"
+                                    : "bg-sky-500/15 text-sky-400 hover:bg-sky-500/25",
+                                )}
+                              >
+                                {tag}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                        {activeTagFilter && (
+                          <button
+                            type="button"
+                            className="mt-2 text-xs text-muted-foreground underline underline-offset-2"
+                            onClick={() => {
+                              setActiveTagFilter(null);
+                              setTagPanelOpen(false);
+                              setTagSearch("");
+                            }}
+                          >
+                            Limpar filtro de tag
+                          </button>
+                        )}
+                      </PopoverContent>
+                    </Popover>
                   )}
 
                   {searchResults ? (
