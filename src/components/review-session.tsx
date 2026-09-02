@@ -84,17 +84,12 @@ export function ReviewSession({
   const [subdeckTally, setSubdeckTally] = useState<Record<string, Record<string, DeckTally>>>({});
   // Anki-style learning steps: cards mid-steps live here, session-local —
   // see src/lib/learning-steps.ts for why the database is untouched while
-  // a card is bouncing between these short delays.
+  // a card is bouncing between these short delays. Deliberately no ticking
+  // timer forcing re-renders here: "which card is due" is only supposed to
+  // be re-evaluated right after a grading action decides what's next, not
+  // continuously while the person is mid-read on an unrelated card — a
+  // live tick would swap the screen out from under them.
   const [learningMap, setLearningMap] = useState<Map<string, LearningStepState>>(new Map());
-  // Re-render every second while anything is pending, so a card whose
-  // timer just elapsed gets picked up and the "volta em Xm" countdown (if
-  // showing) stays live — this is the only reason this tick exists.
-  const [, forceTick] = useState(0);
-  useEffect(() => {
-    if (learningMap.size === 0 || freeMode) return;
-    const id = setInterval(() => forceTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, [learningMap.size, freeMode]);
   const [sessionCards] = useState(() => cards);
   const gradingRef = useRef(false);
   const [typedAnswer, setTypedAnswer] = useState("");
@@ -154,10 +149,23 @@ export function ReviewSession({
     return earliest ? earliest[0] : null;
   })();
   const normalCard = sessionCards[index];
-  const current = dueLearningCardId
-    ? (sessionCards.find((c) => c.id === dueLearningCardId) ?? normalCard)
+  // Anki doesn't make you sit and wait: once the normal queue runs dry,
+  // a learning card that hasn't technically hit its timer yet gets shown
+  // anyway rather than stalling the session on a countdown.
+  const queueExhausted = !normalCard;
+  const earliestPendingId = (() => {
+    if (freeMode || learningMap.size === 0) return null;
+    let earliest: [string, LearningStepState] | null = null;
+    for (const entry of learningMap) {
+      if (!earliest || entry[1].dueAt < earliest[1].dueAt) earliest = entry;
+    }
+    return earliest ? earliest[0] : null;
+  })();
+  const effectiveOverrideId = dueLearningCardId ?? (queueExhausted ? earliestPendingId : null);
+  const current = effectiveOverrideId
+    ? (sessionCards.find((c) => c.id === effectiveOverrideId) ?? normalCard)
     : normalCard;
-  const isOverrideCard = !!dueLearningCardId && current?.id === dueLearningCardId;
+  const isOverrideCard = !!effectiveOverrideId && current?.id === effectiveOverrideId;
   // Single source of truth for "explanation shown matches the card shown" —
   // every navigation path (grade, undo, postpone, read-only next/prev)
   // used to set this manually with sessionCards[someIndex], which broke
@@ -508,24 +516,6 @@ export function ReviewSession({
         <div className="text-center">
           <h2 className="mb-4 text-xl font-semibold">Tudo revisado</h2>
           <Button onClick={onExit}>Voltar</Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Normal queue is exhausted but a learning-step card hasn't hit its
-  // timer yet — rather than show nothing, name the wait and count it down
-  // (the tick effect above re-renders this every second).
-  if (!current && !finished && learningMap.size > 0) {
-    const soonest = [...learningMap.values()].reduce((min, s) => Math.min(min, s.dueAt), Infinity);
-    const secondsLeft = Math.max(0, Math.ceil((soonest - Date.now()) / 1000));
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-background">
-        <div className="text-center">
-          <h2 className="mb-2 text-lg font-semibold">
-            Aguardando {learningMap.size} card(s) voltarem...
-          </h2>
-          <p className="text-sm text-muted-foreground">Próximo em {secondsLeft}s</p>
         </div>
       </div>
     );
