@@ -18,6 +18,13 @@ import { compareAnswer, type DiffPart } from "@/lib/answer-diff";
 import { explainCard } from "@/lib/ai.functions";
 import { cn } from "@/lib/utils";
 import { renderLiteMarkdown } from "@/lib/markdown-lite";
+import {
+  advanceLearningStep,
+  startLearningStep,
+  LEARNING_STEPS_MIN,
+  RELEARNING_STEPS_MIN,
+  type LearningStepState,
+} from "@/lib/learning-steps";
 
 export type OcclusionRegion = {
   id: string;
@@ -33,6 +40,7 @@ type Card = {
   pergunta: string;
   resposta: string;
   due?: string;
+  reps?: number | null;
   rootDeckName?: string;
   level1SubdeckName?: string | null;
   image_url?: string | null;
@@ -74,6 +82,19 @@ export function ReviewSession({
   const [finished, setFinished] = useState(false);
   const [tally, setTally] = useState<Record<string, DeckTally>>({});
   const [subdeckTally, setSubdeckTally] = useState<Record<string, Record<string, DeckTally>>>({});
+  // Anki-style learning steps: cards mid-steps live here, session-local —
+  // see src/lib/learning-steps.ts for why the database is untouched while
+  // a card is bouncing between these short delays.
+  const [learningMap, setLearningMap] = useState<Map<string, LearningStepState>>(new Map());
+  // Re-render every second while anything is pending, so a card whose
+  // timer just elapsed gets picked up and the "volta em Xm" countdown (if
+  // showing) stays live — this is the only reason this tick exists.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (learningMap.size === 0 || freeMode) return;
+    const id = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [learningMap.size, freeMode]);
   const [sessionCards] = useState(() => cards);
   const gradingRef = useRef(false);
   const [typedAnswer, setTypedAnswer] = useState("");
@@ -114,11 +135,38 @@ export function ReviewSession({
     deckName: string;
     subdeckName: string;
     wasCorrect: boolean;
+    wasOverride: boolean;
   } | null>(null);
   const grade = useServerFn(reviewCard);
   const qc = useQueryClient();
 
-  const current = sessionCards[index];
+  // If a learning-step card's timer has elapsed, it takes priority over
+  // the normal queue position — this is what makes it "reappear" mid
+  // session instead of only after the fixed queue is exhausted.
+  const dueLearningCardId = (() => {
+    if (freeMode || learningMap.size === 0) return null;
+    const now = Date.now();
+    let earliest: [string, LearningStepState] | null = null;
+    for (const entry of learningMap) {
+      const [, state] = entry;
+      if (state.dueAt <= now && (!earliest || state.dueAt < earliest[1].dueAt)) earliest = entry;
+    }
+    return earliest ? earliest[0] : null;
+  })();
+  const normalCard = sessionCards[index];
+  const current = dueLearningCardId
+    ? (sessionCards.find((c) => c.id === dueLearningCardId) ?? normalCard)
+    : normalCard;
+  const isOverrideCard = !!dueLearningCardId && current?.id === dueLearningCardId;
+  // Single source of truth for "explanation shown matches the card shown" —
+  // every navigation path (grade, undo, postpone, read-only next/prev)
+  // used to set this manually with sessionCards[someIndex], which broke
+  // once "next card" could also be a learning-step override outside the
+  // normal index. Syncing off current.id here covers every path at once.
+  useEffect(() => {
+    setExplanation(current?.explanation ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id]);
   const clozeMatch = current?.pergunta?.match(/\{\{c::(.*?)\}\}/);
   const isCloze = !!clozeMatch;
   const maskedQuestion = isCloze
@@ -161,12 +209,21 @@ export function ReviewSession({
         data: { id: current.id, days, tz_offset_minutes: new Date().getTimezoneOffset() },
       });
       void qc.invalidateQueries({ queryKey: ["cards"] });
+      // Explicitly pushing the due date out supersedes any short-term
+      // learning-step timer this card might have had running.
+      setLearningMap((m) => {
+        if (!m.has(current.id)) return m;
+        const c = new Map(m);
+        c.delete(current.id);
+        return c;
+      });
       setRevealed(false);
       setTypedAnswer("");
-      const next = index + 1;
-      setExplanation(sessionCards[next]?.explanation ?? null);
-      setIndex(next);
-      if (next >= sessionCards.length) setFinished(true);
+      if (!isOverrideCard) {
+        const next = index + 1;
+        setIndex(next);
+        if (next >= sessionCards.length) setFinished(true);
+      }
       toast.success(`Card adiado por ${days} dia(s)`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -203,13 +260,25 @@ export function ReviewSession({
       });
 
       void qc.invalidateQueries({ queryKey: ["cards"] });
-      // Step back to the card that was just graded and reset its answer UI.
-      const prevIndex = Math.max(0, index - 1);
-      setIndex(prevIndex);
+      // A lapse commit (Review -> Relearning) starts a session-local
+      // relearning run — undoing the commit should cancel that run too,
+      // rather than leave the card bouncing on a timer for a lapse that
+      // no longer happened.
+      setLearningMap((m) => {
+        if (!m.has(lastGraded.id)) return m;
+        const c = new Map(m);
+        c.delete(lastGraded.id);
+        return c;
+      });
       setFinished(false);
       setRevealed(false);
       setTypedAnswer("");
-      setExplanation(sessionCards[prevIndex]?.explanation ?? null);
+      // Only step the index back for a card graded at its normal queue
+      // position — an override card (shown early because its learning
+      // timer elapsed) never advanced the index in the first place.
+      if (!lastGraded.wasOverride) {
+        setIndex(Math.max(0, index - 1));
+      }
       setLastGraded(null);
       toast.success("Avaliação desfeita");
     } catch (err: unknown) {
@@ -226,14 +295,11 @@ export function ReviewSession({
       return;
     }
     setIndex(next);
-    setExplanation(sessionCards[next]?.explanation ?? null);
   }
 
   function handleReadOnlyPrev() {
     if (index === 0) return;
-    const prev = index - 1;
-    setIndex(prev);
-    setExplanation(sessionCards[prev]?.explanation ?? null);
+    setIndex(index - 1);
   }
 
   async function handleRating(rating: number) {
@@ -245,12 +311,77 @@ export function ReviewSession({
     gradingRef.current = true;
     setLoading(true);
     try {
-      if (!freeMode) {
+      const cardId = current.id;
+      const now = Date.now();
+      const tzOffset = new Date().getTimezoneOffset();
+      const existingStep = learningMap.get(cardId);
+      // Pending entries belonging to OTHER cards — untouched by anything
+      // this press does, so they carry over into the "is the session
+      // truly over" check at the end.
+      const otherPendingCount = learningMap.size - (existingStep ? 1 : 0);
+      // Whether a real FSRS commit happened this press — drives whether
+      // the session tally/undo track it, same as every press did before
+      // learning steps existed. Intermediate step presses (Errei/Difícil/
+      // a non-graduating Bom) never reach the database at all.
+      let didCommit = false;
+      // Whether THIS card is still pending (mid-steps) after this press.
+      let thisCardStillPending = false;
+
+      if (freeMode) {
         // Estudo livre nunca toca a linha do card nem o agendamento do
-        // FSRS — essa chamada só acontece fora do modo livre.
-        await grade({
-          data: { id: current.id, rating, tz_offset_minutes: new Date().getTimezoneOffset() },
-        });
+        // FSRS, nem passa pela máquina de passos — sempre foi assim.
+      } else if (existingStep) {
+        // Already mid-steps (learning or relearning) — advance the local
+        // machine. Only a NEW card's learning run needs a DB write on
+        // graduation; a relearning run's real commit already happened
+        // when the lapse itself was recorded, so graduating out of it is
+        // silent — the long-term due FSRS set back then simply stands.
+        const { next, graduated } = advanceLearningStep(existingStep, rating, now);
+        if (graduated) {
+          setLearningMap((m) => {
+            const c = new Map(m);
+            c.delete(cardId);
+            return c;
+          });
+          if (existingStep.phase === "learning") {
+            await grade({ data: { id: cardId, rating, tz_offset_minutes: tzOffset } });
+            didCommit = true;
+          }
+        } else if (next) {
+          setLearningMap((m) => new Map(m).set(cardId, next));
+          thisCardStillPending = true;
+        }
+      } else {
+        const isNewCard = (current.reps ?? 0) === 0;
+        if (isNewCard) {
+          // A virgin card's very first rating decides where it lands in
+          // the step list — starting from step 0 and applying the rating
+          // right away covers Again/Hard/Good/Easy correctly without a
+          // separate "just entered" case.
+          const virgin: LearningStepState = { phase: "learning", stepIndex: 0, dueAt: now };
+          const { next, graduated } = advanceLearningStep(virgin, rating, now);
+          if (graduated) {
+            await grade({ data: { id: cardId, rating, tz_offset_minutes: tzOffset } });
+            didCommit = true;
+          } else if (next) {
+            setLearningMap((m) => new Map(m).set(cardId, next));
+            thisCardStillPending = true;
+          }
+        } else {
+          // A card that's already been reviewed before, first encounter
+          // this session — a normal FSRS review, exactly as it always was.
+          await grade({ data: { id: cardId, rating, tz_offset_minutes: tzOffset } });
+          didCommit = true;
+          if (rating === Rating.Again) {
+            // The lapse itself is already committed above — this just
+            // starts a short in-session re-drill on top of it.
+            setLearningMap((m) => new Map(m).set(cardId, startLearningStep("relearning", now)));
+            thisCardStillPending = true;
+          }
+        }
+      }
+
+      if (!freeMode && didCommit) {
         void qc.invalidateQueries({ queryKey: ["cards"] });
         void qc.invalidateQueries({ queryKey: ["decks"] });
       }
@@ -258,43 +389,60 @@ export function ReviewSession({
       const isCorrect = rating !== Rating.Again;
       setGradeFlash(isCorrect ? "correct" : "incorrect");
       setTimeout(() => setGradeFlash(null), 500);
-      const deckName = current.rootDeckName ?? "(sem deck)";
-      setTally((prev) => {
-        const entry = prev[deckName] ?? { correct: 0, incorrect: 0 };
-        return {
-          ...prev,
-          [deckName]: {
-            correct: entry.correct + (isCorrect ? 1 : 0),
-            incorrect: entry.incorrect + (isCorrect ? 0 : 1),
-          },
-        };
-      });
 
-      const subdeckName = current.level1SubdeckName ?? DIRECT_ON_ROOT;
-      setSubdeckTally((prev) => {
-        const root = prev[deckName] ?? {};
-        const entry = root[subdeckName] ?? { correct: 0, incorrect: 0 };
-        return {
-          ...prev,
-          [deckName]: {
-            ...root,
-            [subdeckName]: {
+      // Tally only a real commit (or every press in freeMode, unchanged) —
+      // an intermediate step press shows the flash feedback above but
+      // doesn't count the same card twice in the session summary.
+      if (freeMode || didCommit) {
+        const deckName = current.rootDeckName ?? "(sem deck)";
+        const subdeckName = current.level1SubdeckName ?? DIRECT_ON_ROOT;
+        setTally((prev) => {
+          const entry = prev[deckName] ?? { correct: 0, incorrect: 0 };
+          return {
+            ...prev,
+            [deckName]: {
               correct: entry.correct + (isCorrect ? 1 : 0),
               incorrect: entry.incorrect + (isCorrect ? 0 : 1),
             },
-          },
-        };
-      });
-
-      if (!freeMode) {
-        setLastGraded({ id: current.id, deckName, subdeckName, wasCorrect: isCorrect });
+          };
+        });
+        setSubdeckTally((prev) => {
+          const root = prev[deckName] ?? {};
+          const entry = root[subdeckName] ?? { correct: 0, incorrect: 0 };
+          return {
+            ...prev,
+            [deckName]: {
+              ...root,
+              [subdeckName]: {
+                correct: entry.correct + (isCorrect ? 1 : 0),
+                incorrect: entry.incorrect + (isCorrect ? 0 : 1),
+              },
+            },
+          };
+        });
+        if (!freeMode) {
+          setLastGraded({
+            id: cardId,
+            deckName,
+            subdeckName,
+            wasCorrect: isCorrect,
+            wasOverride: isOverrideCard,
+          });
+        }
       }
+
       setRevealed(false);
       setTypedAnswer("");
-      const next = index + 1;
-      setExplanation(sessionCards[next]?.explanation ?? null);
-      setIndex(next);
-      if (next >= sessionCards.length) {
+      // An override card never occupied an index slot, so grading it never
+      // advances the normal queue — whatever's due next (another override,
+      // or the queue's current position) resolves on its own next render.
+      const effectiveNextIndex = isOverrideCard ? index : index + 1;
+      if (!isOverrideCard) {
+        setIndex(effectiveNextIndex);
+      }
+      const queueExhausted = effectiveNextIndex >= sessionCards.length;
+      const anyPendingLeft = otherPendingCount > 0 || thisCardStillPending;
+      if (queueExhausted && !anyPendingLeft) {
         setFinished(true);
       }
     } catch (err: unknown) {
@@ -360,6 +508,24 @@ export function ReviewSession({
         <div className="text-center">
           <h2 className="mb-4 text-xl font-semibold">Tudo revisado</h2>
           <Button onClick={onExit}>Voltar</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal queue is exhausted but a learning-step card hasn't hit its
+  // timer yet — rather than show nothing, name the wait and count it down
+  // (the tick effect above re-renders this every second).
+  if (!current && !finished && learningMap.size > 0) {
+    const soonest = [...learningMap.values()].reduce((min, s) => Math.min(min, s.dueAt), Infinity);
+    const secondsLeft = Math.max(0, Math.ceil((soonest - Date.now()) / 1000));
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-background">
+        <div className="text-center">
+          <h2 className="mb-2 text-lg font-semibold">
+            Aguardando {learningMap.size} card(s) voltarem...
+          </h2>
+          <p className="text-sm text-muted-foreground">Próximo em {secondsLeft}s</p>
         </div>
       </div>
     );
@@ -542,6 +708,21 @@ export function ReviewSession({
                     </span>
                   )
                 )}
+                {!freeMode &&
+                  current &&
+                  learningMap.has(current.id) &&
+                  (() => {
+                    const step = learningMap.get(current.id);
+                    if (!step) return null;
+                    const steps =
+                      step.phase === "learning" ? LEARNING_STEPS_MIN : RELEARNING_STEPS_MIN;
+                    return (
+                      <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs text-orange-400">
+                        {step.phase === "learning" ? "Aprendendo" : "Reaprendendo"} — passo{" "}
+                        {step.stepIndex + 1}/{steps.length}
+                      </span>
+                    );
+                  })()}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="ml-auto size-8">
