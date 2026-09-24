@@ -16,7 +16,8 @@
  */
 import type { Database, SqlJsStatic } from "sql.js";
 import JSZip from "jszip";
-import sqlWasmUrl from "sql.js/dist/sql-wasm.wasm?url";
+// sql.js binary is served statically from public/wasm/ (copied from node_modules/sql.js/dist).
+const sqlWasmUrl = "/wasm/sql-wasm.wasm";
 
 export type ApkgDeck = { id: string; name: string; parent_id: string | null };
 export type ApkgCard = {
