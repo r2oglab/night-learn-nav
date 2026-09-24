@@ -200,13 +200,14 @@ function CriacaoPage() {
   const [apkgFileName, setApkgFileName] = useState("");
   const [apkgParsed, setApkgParsed] = useState<{
     decks: { id: string; name: string; parent_id: string | null }[];
-    cards: { id: string; deck_id: string; pergunta: string; resposta: string; tags: string[] }[];
+    cards: import("@/lib/apkg").ApkgCard[];
   } | null>(null);
   const [apkgMediaFiles, setApkgMediaFiles] = useState<Map<string, Blob>>(new Map());
   const [apkgPreview, setApkgPreview] = useState<{
     deckCount: number;
     cardCount: number;
     imageCount: number;
+    occlusionCount: number;
   } | null>(null);
   const [apkgImporting, setApkgImporting] = useState(false);
 
@@ -221,12 +222,14 @@ function CriacaoPage() {
       setApkgParsed({ decks: parsed.decks, cards: parsed.cards });
       setApkgMediaFiles(parsed.mediaFiles);
       const imageCount = parsed.cards.filter(
-        (c) => /<img\b/i.test(c.pergunta) || /<img\b/i.test(c.resposta),
+        (c) => !!c.image_src || /<img\b/i.test(c.pergunta) || /<img\b/i.test(c.resposta),
       ).length;
+      const occlusionCount = parsed.cards.filter((c) => !!c.occlusion_regions).length;
       setApkgPreview({
         deckCount: parsed.decks.length,
         cardCount: parsed.cards.length,
         imageCount,
+        occlusionCount,
       });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -267,28 +270,55 @@ function CriacaoPage() {
         tags: string[];
         image_url: string | null;
         image_placement: "frente" | "verso" | "ambos" | null;
+        occlusion_regions: import("@/lib/apkg").ApkgOcclusionRegion[] | null;
+        occlusion_target_id: string | null;
       }[] = [];
 
+      // Same picture is shared by every card of an occlusion note (and can
+      // repeat across notes) — upload each media file once, reuse the URL.
+      const uploadedUrlByKey = new Map<string, string | null>();
+      async function uploadMedia(mediaKey: string): Promise<string | null> {
+        if (uploadedUrlByKey.has(mediaKey)) return uploadedUrlByKey.get(mediaKey) ?? null;
+        const blob = apkgMediaFiles.get(mediaKey);
+        let url: string | null = null;
+        if (blob) {
+          const ext = /\.([a-z0-9]{2,5})$/i.exec(mediaKey)?.[1]?.toLowerCase() ?? "png";
+          const path = `${user!.id}/${crypto.randomUUID()}.${ext}`;
+          const { error: uploadError } = await supabase.storage
+            .from("card-images")
+            .upload(path, blob, { contentType: `image/${ext === "jpg" ? "jpeg" : ext}` });
+          // Upload falho: segue sem imagem nesse card, sem travar o resto do import.
+          if (!uploadError) {
+            url = supabase.storage.from("card-images").getPublicUrl(path).data.publicUrl;
+          }
+        }
+        uploadedUrlByKey.set(mediaKey, url);
+        return url;
+      }
+
       for (const c of apkgParsed.cards) {
+        if (c.occlusion_regions && c.image_src) {
+          const imageUrl = await uploadMedia(c.image_src);
+          // Sem a imagem, uma oclusão não tem o que mostrar — pula o card.
+          if (!imageUrl) continue;
+          finalCards.push({
+            id: c.id,
+            deck_id: c.deck_id,
+            pergunta: c.pergunta,
+            resposta: c.resposta,
+            tags: c.tags,
+            image_url: imageUrl,
+            image_placement: null,
+            occlusion_regions: c.occlusion_regions,
+            occlusion_target_id: c.occlusion_target_id ?? null,
+          });
+          continue;
+        }
+
         const front = stripImgTags(c.pergunta);
         const back = stripImgTags(c.resposta);
         const mediaKey = back.firstSrc ?? front.firstSrc;
-        let imageUrl: string | null = null;
-
-        if (mediaKey) {
-          const blob = apkgMediaFiles.get(mediaKey);
-          if (blob) {
-            const ext = /\.([a-z0-9]{2,5})$/i.exec(mediaKey)?.[1]?.toLowerCase() ?? "png";
-            const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
-            const { error: uploadError } = await supabase.storage
-              .from("card-images")
-              .upload(path, blob, { contentType: `image/${ext === "jpg" ? "jpeg" : ext}` });
-            if (!uploadError) {
-              imageUrl = supabase.storage.from("card-images").getPublicUrl(path).data.publicUrl;
-            }
-            // Upload falho: segue sem imagem nesse card, sem travar o resto do import.
-          }
-        }
+        const imageUrl = mediaKey ? await uploadMedia(mediaKey) : null;
 
         const placement: "frente" | "verso" | "ambos" | null = !imageUrl
           ? null
@@ -306,6 +336,8 @@ function CriacaoPage() {
           tags: c.tags,
           image_url: imageUrl,
           image_placement: placement,
+          occlusion_regions: null,
+          occlusion_target_id: null,
         });
       }
 
@@ -1455,6 +1487,12 @@ function CriacaoPage() {
                               <p className="mt-1 text-xs text-muted-foreground">
                                 {apkgPreview.imageCount} card(s) com imagem — serão baixadas do
                                 pacote e enviadas junto.
+                              </p>
+                            )}
+                            {apkgPreview.occlusionCount > 0 && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {apkgPreview.occlusionCount} card(s) de oclusão de imagem (um por
+                                máscara, como no Anki).
                               </p>
                             )}
                           </div>

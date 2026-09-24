@@ -20,12 +20,24 @@ import JSZip from "jszip";
 const sqlWasmUrl = ["", "wasm", "sql-wasm" + ".wasm"].join("/");
 
 export type ApkgDeck = { id: string; name: string; parent_id: string | null };
+export type ApkgOcclusionRegion = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string;
+};
 export type ApkgCard = {
   id: string;
   deck_id: string;
   pergunta: string;
   resposta: string;
   tags: string[];
+  /** Image occlusion only: media filename of the occluded picture. */
+  image_src?: string | null;
+  occlusion_regions?: ApkgOcclusionRegion[] | null;
+  occlusion_target_id?: string | null;
 };
 export type ParsedApkg = {
   decks: ApkgDeck[];
@@ -105,14 +117,102 @@ function cleanHtml(html: string): string {
 }
 
 /**
- * Anki cloze -> app cloze.
- * FIDELITY LOSS (accepted): Anki numbers clozes ({{c1::..}}, {{c2::..}}) and
- * generates one card per number, and supports hints ({{c1::text::hint}}).
- * The app only has one un-numbered cloze group, so every deletion collapses
- * into {{c::text}}, hints are dropped, and a note produces a single card.
+ * Anki cloze -> app cloze, for ONE specific cloze number.
+ * Anki numbers clozes ({{c1::..}}, {{c2::..}}) and generates one real card
+ * per number, with every OTHER number already revealed as plain text on
+ * that card. This mirrors that: the requested number becomes {{c::text}}
+ * (which the app masks), every other number is replaced by its plain
+ * text (revealed). Hints ({{c1::text::hint}}) are dropped — the app has
+ * no hint mechanism.
  */
-function convertCloze(text: string): string {
-  return text.replace(/\{\{c\d+::([\s\S]*?)(?:::[^}]*?)?\}\}/g, (_m, t: string) => `{{c::${t}}}`);
+function convertClozeForNumber(text: string, clozeNumber: number): string {
+  return text.replace(
+    /\{\{c(\d+)::([\s\S]*?)(?:::[^}]*?)?\}\}/g,
+    (_m, num: string, content: string) =>
+      Number(num) === clozeNumber ? `{{c::${content}}}` : content,
+  );
+}
+
+/** Every distinct cloze number referenced in a note's text — used as a
+ * fallback when the real per-card `ord` isn't available for some reason. */
+function clozeNumbersIn(text: string): number[] {
+  const nums = new Set<number>();
+  for (const m of text.matchAll(/\{\{c(\d+)::/g)) nums.add(Number(m[1]));
+  return [...nums].sort((a, b) => a - b);
+}
+
+/**
+ * Anki image occlusion -> app occlusion regions.
+ * Anki stores each mask as {{cN::image-occlusion:SHAPE:left=.x:top=.y:...}}
+ * with coordinates as fractions (0-1) of the image; the app stores regions
+ * as percentages (0-100). Both use the same "hide all, reveal one" model.
+ * Rect maps directly; polygon/ellipse become their bounding box (the app
+ * only draws rectangles). Several shapes sharing one cN are one question
+ * in Anki, so they're merged into a single region here. Text shapes are
+ * annotations, not masks — skipped. Region ids are `${nid}-c${N}`, stable
+ * across every card generated from the same note.
+ */
+function parseOcclusionRegions(text: string, nid: string): ApkgOcclusionRegion[] {
+  const boxes = new Map<number, { x1: number; y1: number; x2: number; y2: number }>();
+  const re = /\{\{c(\d+)::image-occlusion:([a-z]+):([^}]*?)\}\}/gi;
+  for (const m of text.matchAll(re)) {
+    const num = Number(m[1]);
+    const shape = m[2]!.toLowerCase();
+    const props: Record<string, string> = {};
+    for (const part of m[3]!.split(":")) {
+      const eq = part.indexOf("=");
+      if (eq > 0) props[part.slice(0, eq)] = part.slice(eq + 1);
+    }
+    const num0 = (k: string) => Number(props[k] ?? NaN);
+    let x1: number, y1: number, x2: number, y2: number;
+    if (shape === "rect") {
+      x1 = num0("left");
+      y1 = num0("top");
+      x2 = x1 + num0("width");
+      y2 = y1 + num0("height");
+    } else if (shape === "ellipse") {
+      x1 = num0("left");
+      y1 = num0("top");
+      x2 = x1 + 2 * num0("rx");
+      y2 = y1 + 2 * num0("ry");
+    } else if (shape === "polygon") {
+      const pts = (props["points"] ?? "")
+        .trim()
+        .split(/\s+/)
+        .map((p) => p.split(",").map(Number))
+        .filter((p) => p.length === 2 && p.every(Number.isFinite));
+      if (pts.length === 0) continue;
+      x1 = Math.min(...pts.map((p) => p[0]!));
+      y1 = Math.min(...pts.map((p) => p[1]!));
+      x2 = Math.max(...pts.map((p) => p[0]!));
+      y2 = Math.max(...pts.map((p) => p[1]!));
+    } else {
+      continue;
+    }
+    if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+    const prev = boxes.get(num);
+    boxes.set(
+      num,
+      prev
+        ? {
+            x1: Math.min(prev.x1, x1),
+            y1: Math.min(prev.y1, y1),
+            x2: Math.max(prev.x2, x2),
+            y2: Math.max(prev.y2, y2),
+          }
+        : { x1, y1, x2, y2 },
+    );
+  }
+  const pct = (v: number) => Math.min(100, Math.max(0, Math.round(v * 10000) / 100));
+  return [...boxes.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([num, b]) => ({
+      id: `${nid}-c${num}`,
+      x: pct(b.x1),
+      y: pct(b.y1),
+      width: pct(b.x2 - b.x1),
+      height: pct(b.y2 - b.y1),
+    }));
 }
 
 function imgSources(html: string): string[] {
@@ -123,11 +223,14 @@ function imgSources(html: string): string[] {
   return out;
 }
 
-type NoteKind = "basic" | "cloze";
+type NoteKind = "basic" | "cloze" | "occlusion";
 type ModelInfo = { kind: NoteKind | null };
 
 function classifyModel(name: string, type: number | null, fieldCount: number): NoteKind | null {
   const n = name.toLowerCase();
+  // Image occlusion is technically a cloze type (type=1) in Anki's schema,
+  // so it has to be recognised BEFORE the generic cloze check below.
+  if (n.includes("occlusion") || n.includes("oclusão") || n.includes("oclusao")) return "occlusion";
   if (type === 1 || n.includes("cloze") || n.includes("omissão") || n.includes("omissao"))
     return "cloze";
   if (type !== null && type !== 0) return null;
@@ -239,7 +342,6 @@ export async function parseApkg(file: File): Promise<ParsedApkg> {
 
     const cards: ApkgCard[] = [];
     const referencedMedia = new Set<string>();
-    const seenClozeNotes = new Set<string>();
 
     for (const r of rows) {
       const model = models.get(String(r.mid));
@@ -253,11 +355,49 @@ export async function parseApkg(file: File): Promise<ParsedApkg> {
 
       let front: string;
       let back: string;
-      if (model.kind === "cloze") {
+      const isOcclusion =
+        model.kind === "occlusion" || (fields[0] ?? "").includes("image-occlusion:");
+      if (isOcclusion) {
+        // Fields: Oclusão/Occlusion, Imagem/Image, Cabeçalho/Header,
+        // Verso Extra/Back Extra, Comentário/Comments.
         const nid = String(r.nid);
-        if (seenClozeNotes.has(nid)) continue; // one card per cloze note
-        seenClozeNotes.add(nid);
-        front = convertCloze(fields[0] ?? "");
+        const regions = parseOcclusionRegions(fields[0] ?? "", nid);
+        const imageSrc = imgSources(fields[1] ?? "")[0] ?? null;
+        if (regions.length === 0 || !imageSrc) continue;
+        const numbers = clozeNumbersIn(fields[0] ?? "");
+        const targetNumber = numbers[ord] ?? ord + 1;
+        const targetId = `${nid}-c${targetNumber}`;
+        if (!regions.some((reg) => reg.id === targetId)) continue;
+        referencedMedia.add(imageSrc);
+        const header = cleanHtml(fields[2] ?? "")
+          .replace(/<img[^>]*>/gi, "")
+          .trim();
+        const extra = cleanHtml(fields[3] ?? "")
+          .replace(/<img[^>]*>/gi, "")
+          .trim();
+        const deck = ensureDeck(deckNames.get(String(r.did)) ?? "Default");
+        cards.push({
+          id: uuid(),
+          deck_id: deck.id,
+          pergunta: header ? `[Oclusão] ${header}` : "[Oclusão de imagem]",
+          resposta: extra,
+          tags,
+          image_src: imageSrc,
+          occlusion_regions: regions,
+          occlusion_target_id: targetId,
+        });
+        continue;
+      }
+      if (model.kind === "cloze") {
+        // Anki already generated one real card per cloze number — `ord` is
+        // that card's index. Map it back to the actual number used (not
+        // just ord+1: a note using {{c1::}} and {{c3::}} but no {{c2::}}
+        // still gets ord=0/1, so the Nth *distinct number used*, in
+        // ascending order, is the one this specific card tests).
+        const rawText = fields[0] ?? "";
+        const numbers = clozeNumbersIn(rawText);
+        const targetNumber = numbers[ord] ?? ord + 1;
+        front = convertClozeForNumber(rawText, targetNumber);
         back = fields[1] ?? "";
       } else if (ord === 1) {
         front = fields[1] ?? "";
