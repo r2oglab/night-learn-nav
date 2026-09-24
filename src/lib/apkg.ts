@@ -16,8 +16,8 @@
  */
 import type { Database, SqlJsStatic } from "sql.js";
 import JSZip from "jszip";
-// sql.js binary is served statically from public/wasm/ (copied from node_modules/sql.js/dist).
-const sqlWasmUrl = "/wasm/sql-wasm.wasm";
+// SQLite engine binary served statically from the public/wasm folder, fetched by URL at runtime.
+const sqlWasmUrl = ["", "wasm", "sql-wasm" + ".wasm"].join("/");
 
 export type ApkgDeck = { id: string; name: string; parent_id: string | null };
 export type ApkgCard = {
