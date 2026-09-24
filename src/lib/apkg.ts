@@ -49,11 +49,15 @@ function uuid(): string {
   return crypto.randomUUID();
 }
 
-function queryAll(db: Database, sql: string): Record<string, unknown>[] {
+type SqlRow = Partial<
+  Record<"id" | "name" | "ntid" | "c" | "models" | "decks" | "mid" | "flds" | "tags" | "ord" | "nid" | "did" | "cid", unknown>
+>;
+
+function queryAll(db: Database, sql: string): SqlRow[] {
   const res = db.exec(sql);
   if (!res.length) return [];
   const { columns, values } = res[0]!;
-  return values.map((row) => Object.fromEntries(columns.map((c, i) => [c, row[i]])));
+  return values.map((row) => Object.fromEntries(columns.map((c, i) => [c, row[i]])) as SqlRow);
 }
 
 function hasTable(db: Database, name: string): boolean {
@@ -190,18 +194,20 @@ export async function parseApkg(file: File): Promise<ParsedApkg> {
     const ensureDeck = (fullName: string): ApkgDeck => {
       const parts = fullName.split("::").map((p) => p.trim()).filter(Boolean);
       if (!parts.length) parts.push("Default");
-      let parent: ApkgDeck | null = null;
+      let parentId: string | null = null;
+      let last: ApkgDeck | undefined;
       let path = "";
       for (const part of parts) {
         path = path ? `${path}::${part}` : part;
         let deck = deckByPath.get(path);
         if (!deck) {
-          deck = { id: uuid(), name: part, parent_id: parent?.id ?? null };
+          deck = { id: uuid(), name: part, parent_id: parentId };
           deckByPath.set(path, deck);
         }
-        parent = deck;
+        parentId = deck.id;
+        last = deck;
       }
-      return parent!;
+      return last!;
     };
 
     const cards: ApkgCard[] = [];
