@@ -192,6 +192,140 @@ function CriacaoPage() {
     );
   }
 
+  // Import .apkg: parseApkg roda 100% no navegador (sql.js + jszip). O
+  // resultado já bate quase todo com o formato {decks, cards} que
+  // applyJsonImport (modo "mesclar") espera — só precisa subir a mídia
+  // referenciada nos campos e trocar a tag <img> por image_url, já que
+  // esse app guarda imagem num campo próprio, não inline no texto.
+  const [apkgFileName, setApkgFileName] = useState("");
+  const [apkgParsed, setApkgParsed] = useState<{
+    decks: { id: string; name: string; parent_id: string | null }[];
+    cards: { id: string; deck_id: string; pergunta: string; resposta: string; tags: string[] }[];
+  } | null>(null);
+  const [apkgMediaFiles, setApkgMediaFiles] = useState<Map<string, Blob>>(new Map());
+  const [apkgPreview, setApkgPreview] = useState<{
+    deckCount: number;
+    cardCount: number;
+    imageCount: number;
+  } | null>(null);
+  const [apkgImporting, setApkgImporting] = useState(false);
+
+  async function handleApkgFile(file: File) {
+    setApkgFileName(file.name);
+    setApkgParsed(null);
+    setApkgPreview(null);
+    setApkgMediaFiles(new Map());
+    try {
+      const { parseApkg } = await import("@/lib/apkg");
+      const parsed = await parseApkg(file);
+      setApkgParsed({ decks: parsed.decks, cards: parsed.cards });
+      setApkgMediaFiles(parsed.mediaFiles);
+      const imageCount = parsed.cards.filter(
+        (c) => /<img\b/i.test(c.pergunta) || /<img\b/i.test(c.resposta),
+      ).length;
+      setApkgPreview({
+        deckCount: parsed.decks.length,
+        cardCount: parsed.cards.length,
+        imageCount,
+      });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  /** Removes every <img src="x"> from a field, returning the plain text and
+   * the first referenced filename (if any) — Anki embeds images inline in
+   * HTML; this app keeps them in a separate image_url column instead. */
+  function stripImgTags(html: string): { text: string; firstSrc: string | null } {
+    let firstSrc: string | null = null;
+    const re = /<img[^>]*?src\s*=\s*["']?([^"'>\s]+)["']?[^>]*>/gi;
+    const text = html.replace(re, (_m, src: string) => {
+      if (!firstSrc) firstSrc = src;
+      return "";
+    });
+    return { text: text.trim(), firstSrc };
+  }
+
+  async function handleApplyApkg() {
+    if (!apkgParsed) return;
+    if (!user?.id) {
+      toast.error("Sessão inválida — recarregue a página e tente de novo.");
+      return;
+    }
+    if (
+      !window.confirm(`Importar ${apkgParsed.cards.length} card(s) como cópia nova (FSRS zerado)?`)
+    ) {
+      return;
+    }
+    setApkgImporting(true);
+    try {
+      const finalCards: {
+        id: string;
+        deck_id: string;
+        pergunta: string;
+        resposta: string;
+        tags: string[];
+        image_url: string | null;
+        image_placement: "frente" | "verso" | "ambos" | null;
+      }[] = [];
+
+      for (const c of apkgParsed.cards) {
+        const front = stripImgTags(c.pergunta);
+        const back = stripImgTags(c.resposta);
+        const mediaKey = back.firstSrc ?? front.firstSrc;
+        let imageUrl: string | null = null;
+
+        if (mediaKey) {
+          const blob = apkgMediaFiles.get(mediaKey);
+          if (blob) {
+            const ext = /\.([a-z0-9]{2,5})$/i.exec(mediaKey)?.[1]?.toLowerCase() ?? "png";
+            const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
+            const { error: uploadError } = await supabase.storage
+              .from("card-images")
+              .upload(path, blob, { contentType: `image/${ext === "jpg" ? "jpeg" : ext}` });
+            if (!uploadError) {
+              imageUrl = supabase.storage.from("card-images").getPublicUrl(path).data.publicUrl;
+            }
+            // Upload falho: segue sem imagem nesse card, sem travar o resto do import.
+          }
+        }
+
+        const placement: "frente" | "verso" | "ambos" | null = !imageUrl
+          ? null
+          : front.firstSrc && back.firstSrc
+            ? "ambos"
+            : front.firstSrc
+              ? "frente"
+              : "verso";
+
+        finalCards.push({
+          id: c.id,
+          deck_id: c.deck_id,
+          pergunta: front.text,
+          resposta: back.text,
+          tags: c.tags,
+          image_url: imageUrl,
+          image_placement: placement,
+        });
+      }
+
+      const result = await runApplyJson({
+        data: { mode: "merge", decks: apkgParsed.decks, cards: finalCards },
+      });
+      void queryClient.invalidateQueries({ queryKey: ["cards"] });
+      void queryClient.invalidateQueries({ queryKey: ["decks"] });
+      toast.success(`${result.deckCount} deck(s) e ${result.cardCount} card(s) importado(s)`);
+      setApkgParsed(null);
+      setApkgFileName("");
+      setApkgPreview(null);
+      setApkgMediaFiles(new Map());
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApkgImporting(false);
+    }
+  }
+
   async function handleJsonFile(file: File) {
     setJsonFileName(file.name);
     setJsonPreview(null);
@@ -783,7 +917,7 @@ function CriacaoPage() {
                   // pergunta/resposta. CSV keeps using the shared submit
                   // button below, same as always.
                   if (cardType === "importar") {
-                    if (jsonParsed || structuredParsed) return;
+                    if (jsonParsed || structuredParsed || apkgParsed) return;
                     await handleImportSubmit();
                     return;
                   }
@@ -1292,6 +1426,50 @@ function CriacaoPage() {
                           </Button>
                         )}
                       </>
+                    ) : apkgParsed ? (
+                      <div className="grid gap-3">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{apkgFileName} — pacote Anki (.apkg)</span>
+                          <button
+                            type="button"
+                            className="underline underline-offset-2"
+                            onClick={() => {
+                              setApkgParsed(null);
+                              setApkgFileName("");
+                              setApkgPreview(null);
+                              setApkgMediaFiles(new Map());
+                            }}
+                          >
+                            Trocar arquivo
+                          </button>
+                        </div>
+
+                        {apkgPreview && (
+                          <div className="rounded-lg border border-border p-3 text-sm">
+                            <p>
+                              <strong>{apkgPreview.cardCount}</strong> card(s) em{" "}
+                              <strong>{apkgPreview.deckCount}</strong> deck(s) seriam criados como
+                              cópia nova (FSRS zerado, decks casados por nome quando já existirem).
+                            </p>
+                            {apkgPreview.imageCount > 0 && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {apkgPreview.imageCount} card(s) com imagem — serão baixadas do
+                                pacote e enviadas junto.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        <Button
+                          type="button"
+                          disabled={apkgImporting || !apkgPreview}
+                          onClick={() => void handleApplyApkg()}
+                        >
+                          {apkgImporting
+                            ? "Importando..."
+                            : `Importar ${apkgParsed.cards.length} card(s)`}
+                        </Button>
+                      </div>
                     ) : !csvPreview ? (
                       <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                         <p>
@@ -1299,20 +1477,24 @@ function CriacaoPage() {
                             Escolha um arquivo
                             <input
                               type="file"
-                              accept=".csv,.txt,.json,text/csv,text/plain,application/json"
+                              accept=".csv,.txt,.json,.apkg,text/csv,text/plain,application/json"
                               className="hidden"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (!file) return;
-                                if (file.name.toLowerCase().endsWith(".json")) {
+                                const lower = file.name.toLowerCase();
+                                if (lower.endsWith(".json")) {
                                   void handleJsonFile(file);
+                                } else if (lower.endsWith(".apkg")) {
+                                  void handleApkgFile(file);
                                 } else {
                                   void handleCsvFile(file);
                                 }
                               }}
                             />
                           </label>{" "}
-                          .csv, .txt (Anki, Excel ou similar) ou .json (backup completo)
+                          .csv, .txt (Anki, Excel ou similar), .json (backup completo) ou .apkg
+                          (pacote do Anki)
                         </p>
                         <p className="text-xs">
                           CSV/TXT: 2 colunas (pergunta, resposta) ou 3 colunas (deck, pergunta,
@@ -1718,7 +1900,7 @@ function CriacaoPage() {
                   </Button>
                 )}
 
-                {!(cardType === "importar" && (jsonParsed || structuredParsed)) && (
+                {!(cardType === "importar" && (jsonParsed || structuredParsed || apkgParsed)) && (
                   <Button
                     type="submit"
                     disabled={

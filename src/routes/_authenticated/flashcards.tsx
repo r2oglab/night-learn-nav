@@ -10,6 +10,7 @@ import {
   X,
   Download,
   FileJson,
+  Package,
   Eye,
   Pencil,
   Trash2,
@@ -769,6 +770,60 @@ function FlashcardsPage() {
     }
   }
 
+  const [exportingApkgId, setExportingApkgId] = useState<string | null>(null);
+  /** Export a deck (and its subdecks) as a real .apkg, openable in Anki.
+   * exportDeckBackup deliberately includes trashed cards (useful for
+   * restore) — apkg export filters those out, since opening a deck in
+   * Anki shouldn't resurrect something the person threw away here. */
+  async function exportDeckApkg(deck: { id: string; name: string }) {
+    setExportingApkgId(deck.id);
+    try {
+      const backup = await fetchDeckBackup({ data: { deck_id: deck.id } });
+      const activeCards = backup.cards.filter((c: { deleted_at: string | null }) => !c.deleted_at);
+      if (activeCards.length === 0) {
+        toast.info("Nenhum card para exportar neste deck.");
+        return;
+      }
+      const { buildApkg } = await import("@/lib/apkg");
+      const blob = await buildApkg(
+        backup.decks.map((d: { id: string; name: string; parent_id: string | null }) => ({
+          id: d.id,
+          name: d.name,
+          parent_id: d.parent_id,
+        })),
+        activeCards.map(
+          (c: {
+            id: string;
+            deck_id: string;
+            pergunta: string;
+            resposta: string;
+            tags: string[] | null;
+            image_url: string | null;
+          }) => ({
+            id: c.id,
+            deck_id: c.deck_id,
+            pergunta: c.pergunta,
+            resposta: c.resposta,
+            tags: c.tags ?? [],
+            image_url: c.image_url,
+          }),
+        ),
+      );
+      const safeName = deck.name.replace(/[^\p{L}\p{N}_-]+/gu, "_");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeName}_${new Date().toISOString().slice(0, 10)}.apkg`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`${activeCards.length} card(s) exportado(s)`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportingApkgId(null);
+    }
+  }
+
   const [query, setQuery] = useState("");
 
   /**
@@ -1506,6 +1561,17 @@ function FlashcardsPage() {
                 >
                   <FileJson className="size-3.5" />
                   <span className="sr-only">Exportar deck em JSON</span>
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  title="Exportar deck (.apkg) — abre direto no Anki"
+                  disabled={exportingApkgId === deck.id}
+                  onClick={() => void exportDeckApkg(deck)}
+                >
+                  <Package className="size-3.5" />
+                  <span className="sr-only">Exportar deck em .apkg</span>
                 </Button>
                 <Button
                   size="icon"
