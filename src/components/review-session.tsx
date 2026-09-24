@@ -18,6 +18,7 @@ import { compareAnswer, type DiffPart } from "@/lib/answer-diff";
 import { explainCard } from "@/lib/ai.functions";
 import { cn } from "@/lib/utils";
 import { renderLiteMarkdown } from "@/lib/markdown-lite";
+import { revealClozeHighlighted } from "@/components/cloze-editor";
 import {
   advanceLearningStep,
   startLearningStep,
@@ -180,7 +181,7 @@ export function ReviewSession({
   const maskedQuestion = isCloze
     ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, "___")
     : (current?.pergunta ?? "");
-  const clozeFull = isCloze ? current!.pergunta.replace(/\{\{c::(.*?)\}\}/g, (_, g) => g) : null;
+  const clozeFull = isCloze ? revealClozeHighlighted(current!.pergunta) : null;
 
   const isTypeIn = current?.card_type === "digitar";
   // NULL/undefined predates this feature — those cards only ever showed

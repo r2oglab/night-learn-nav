@@ -22,14 +22,21 @@ export function renderLiteMarkdown(text: string): string {
   // a string here. Inline CSS sidesteps that risk entirely. <strong>/<em>
   // don't need this — their default browser styling (bold/italic) is
   // strong enough on its own to be unmistakable.
+  // Same blue in light and dark themes — readable on both backgrounds.
+  const CLOZE_ANSWER_STYLE = "color: rgb(59,130,246); font-weight: 700;";
   const CODE_STYLE =
     "font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: rgba(128,128,128,0.2); padding: 0.1em 0.4em; border-radius: 0.3em; font-size: 0.875em;";
 
   // Order matters: bold's ** pairs are consumed first, so the italic
   // pass (single *) never mistakes a bold marker's stars for its own.
-  return escaped
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[^*])\*([^*]+?)\*(?!\*)/g, "$1<em>$2</em>")
-    .replace(/`(.+?)`/g, `<code style="${CODE_STYLE}">$1</code>`)
-    .replace(/\n/g, "<br />");
+  return (
+    escaped
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*]+?)\*(?!\*)/g, "$1<em>$2</em>")
+      .replace(/`(.+?)`/g, `<code style="${CODE_STYLE}">$1</code>`)
+      // ==x== marks a revealed cloze answer (see revealClozeHighlighted).
+      // Runs after bold, so an answer inside an already-bold span nests fine.
+      .replace(/==(.+?)==/g, `<span style="${CLOZE_ANSWER_STYLE}">$1</span>`)
+      .replace(/\n/g, "<br />")
+  );
 }

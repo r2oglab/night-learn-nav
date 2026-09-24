@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { explainCard, improveCard } from "@/lib/ai.functions";
 import { renderLiteMarkdown } from "@/lib/markdown-lite";
 import { Input } from "@/components/ui/input";
-import { isClozeText, maskCloze, revealCloze } from "@/components/cloze-editor";
+import { isClozeText, maskCloze, revealClozeHighlighted } from "@/components/cloze-editor";
 
 export type PreviewCard = {
   id?: string;
@@ -118,7 +118,7 @@ export function CardPreviewDialog({
 
   const cloze = isClozeText(card.pergunta);
   const front = cloze ? maskCloze(card.pergunta) : card.pergunta;
-  const back = cloze ? revealCloze(card.pergunta) : card.resposta;
+  const back = cloze ? revealClozeHighlighted(card.pergunta) : card.resposta;
   const imagePlacement = card.image_placement ?? "frente";
   const showImageOnFront = imagePlacement === "frente" || imagePlacement === "ambos";
   const showImageOnBack = imagePlacement === "verso" || imagePlacement === "ambos";

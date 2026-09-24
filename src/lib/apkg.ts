@@ -102,18 +102,28 @@ function hasColumn(db: Database, table: string, column: string): boolean {
 
 /** Anki HTML -> app text. Keeps <img> tags (media references), turns line breaks into \n. */
 function cleanHtml(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(div|p|li)>/gi, "\n")
-    .replace(/<(?!img\b)[^>]+>/gi, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return (
+    html
+      // Keep Anki's bold/italic as the app's lite markdown (**x** / *x*)
+      // instead of dropping it with the rest of the tags below.
+      .replace(/<(b|strong)\b[^>]*>([\s\S]*?)<\/\1>/gi, (_m, _t, inner: string) =>
+        inner.trim() ? `**${inner}**` : inner,
+      )
+      .replace(/<(i|em)\b[^>]*>([\s\S]*?)<\/\1>/gi, (_m, _t, inner: string) =>
+        inner.trim() ? `*${inner}*` : inner,
+      )
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(div|p|li)>/gi, "\n")
+      .replace(/<(?!img\b)[^>]+>/gi, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, "&")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 /**

@@ -97,7 +97,7 @@ import {
   ClozeEditor,
   isClozeText,
   maskCloze,
-  revealCloze,
+  revealClozeHighlighted,
   parseClozeText,
   buildClozeText,
 } from "@/components/cloze-editor";
@@ -1169,7 +1169,7 @@ function FlashcardsPage() {
                     <p
                       className="text-sm text-muted-foreground"
                       dangerouslySetInnerHTML={{
-                        __html: renderLiteMarkdown(revealCloze(card.pergunta)),
+                        __html: renderLiteMarkdown(revealClozeHighlighted(card.pergunta)),
                       }}
                     />
                   </>

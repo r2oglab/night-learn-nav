@@ -19,6 +19,19 @@ export function revealCloze(text: string): string {
   return text.replace(CLOZE_PATTERN_G, (_m, g: string) => g);
 }
 
+/** Same as revealCloze, but marks each revealed answer with ==x== (lite
+ * markdown "cloze answer" highlight) so it stands out on the back of the
+ * card. A dedicated marker instead of **bold** on purpose: an answer that
+ * sits inside a span that was already bold ("**Sem {{c::x}}.**") would
+ * otherwise cross the asterisks and end up UN-bolded. Display only — the
+ * editor keeps using the plain revealCloze. */
+export function revealClozeHighlighted(text: string): string {
+  return text.replace(CLOZE_PATTERN_G, (_m, g: string) => {
+    const inner = g.replace(/==/g, "").trim();
+    return inner ? `==${inner}==` : g;
+  });
+}
+
 /**
  * Split stored cloze text back into the plain sentence plus the set of word
  * indices that were hidden, so an existing card can be reopened in the same
