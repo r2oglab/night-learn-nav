@@ -706,8 +706,17 @@ export const unlinkCards = createServerFn({ method: "POST" })
 export const listCardLinks = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { card_id: string }) => {
-    if (!input.card_id?.trim()) throw new Error("ID do card inválido.");
-    return input;
+    // card_id is interpolated straight into a PostgREST .or() filter string
+    // below — without this check, a crafted value with a comma or dot
+    // could inject extra filter clauses into the query. A real UUID can
+    // only ever contain hex digits and hyphens, so requiring that format
+    // closes the injection surface entirely, not just the specific chars
+    // seen so far.
+    const id = input.card_id?.trim() ?? "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new Error("ID do card inválido.");
+    }
+    return { card_id: id };
   })
   .handler(async ({ data, context }) => {
     const { data: links, error } = await context.supabase
