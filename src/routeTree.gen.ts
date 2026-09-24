@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as AuthenticatedCriacaoRouteImport } from './routes/_authenticated/criacao'
+import { Route as AuthenticatedEstatisticasRouteImport } from './routes/_authenticated/estatisticas'
 import { Route as AuthenticatedFlashcardsRouteImport } from './routes/_authenticated/flashcards'
 import { Route as AuthenticatedRevisoesRouteImport } from './routes/_authenticated/revisoes'
 
@@ -41,6 +42,12 @@ const AuthenticatedCriacaoRoute = AuthenticatedCriacaoRouteImport.update({
   path: '/criacao',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedEstatisticasRoute =
+  AuthenticatedEstatisticasRouteImport.update({
+    id: '/estatisticas',
+    path: '/estatisticas',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedFlashcardsRoute = AuthenticatedFlashcardsRouteImport.update({
   id: '/flashcards',
   path: '/flashcards',
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/criacao': typeof AuthenticatedCriacaoRoute
+  '/estatisticas': typeof AuthenticatedEstatisticasRoute
   '/flashcards': typeof AuthenticatedFlashcardsRoute
   '/revisoes': typeof AuthenticatedRevisoesRoute
 }
@@ -65,6 +73,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/criacao': typeof AuthenticatedCriacaoRoute
+  '/estatisticas': typeof AuthenticatedEstatisticasRoute
   '/flashcards': typeof AuthenticatedFlashcardsRoute
   '/revisoes': typeof AuthenticatedRevisoesRoute
 }
@@ -75,16 +84,29 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/_authenticated/criacao': typeof AuthenticatedCriacaoRoute
+  '/_authenticated/estatisticas': typeof AuthenticatedEstatisticasRoute
   '/_authenticated/flashcards': typeof AuthenticatedFlashcardsRoute
   '/_authenticated/revisoes': typeof AuthenticatedRevisoesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/auth' | '/configuracoes' | '/criacao' | '/flashcards' | '/revisoes'
+    | '/'
+    | '/auth'
+    | '/configuracoes'
+    | '/criacao'
+    | '/estatisticas'
+    | '/flashcards'
+    | '/revisoes'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/auth' | '/configuracoes' | '/criacao' | '/flashcards' | '/revisoes'
+    | '/'
+    | '/auth'
+    | '/configuracoes'
+    | '/criacao'
+    | '/estatisticas'
+    | '/flashcards'
+    | '/revisoes'
   id:
     | '__root__'
     | '/'
@@ -92,6 +114,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/configuracoes'
     | '/_authenticated/criacao'
+    | '/_authenticated/estatisticas'
     | '/_authenticated/flashcards'
     | '/_authenticated/revisoes'
   fileRoutesById: FileRoutesById
@@ -140,6 +163,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCriacaoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/estatisticas': {
+      id: '/_authenticated/estatisticas'
+      path: '/estatisticas'
+      fullPath: '/estatisticas'
+      preLoaderRoute: typeof AuthenticatedEstatisticasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/flashcards': {
       id: '/_authenticated/flashcards'
       path: '/flashcards'
@@ -159,12 +189,14 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCriacaoRoute: typeof AuthenticatedCriacaoRoute
+  AuthenticatedEstatisticasRoute: typeof AuthenticatedEstatisticasRoute
   AuthenticatedFlashcardsRoute: typeof AuthenticatedFlashcardsRoute
   AuthenticatedRevisoesRoute: typeof AuthenticatedRevisoesRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCriacaoRoute: AuthenticatedCriacaoRoute,
+  AuthenticatedEstatisticasRoute: AuthenticatedEstatisticasRoute,
   AuthenticatedFlashcardsRoute: AuthenticatedFlashcardsRoute,
   AuthenticatedRevisoesRoute: AuthenticatedRevisoesRoute,
 }
