@@ -51,7 +51,22 @@ function uuid(): string {
 }
 
 type SqlRow = Partial<
-  Record<"id" | "name" | "ntid" | "c" | "models" | "decks" | "mid" | "flds" | "tags" | "ord" | "nid" | "did" | "cid", unknown>
+  Record<
+    | "id"
+    | "name"
+    | "ntid"
+    | "c"
+    | "models"
+    | "decks"
+    | "mid"
+    | "flds"
+    | "tags"
+    | "ord"
+    | "nid"
+    | "did"
+    | "cid",
+    unknown
+  >
 >;
 
 function queryAll(db: Database, sql: string): SqlRow[] {
@@ -113,7 +128,8 @@ type ModelInfo = { kind: NoteKind | null };
 
 function classifyModel(name: string, type: number | null, fieldCount: number): NoteKind | null {
   const n = name.toLowerCase();
-  if (type === 1 || n.includes("cloze") || n.includes("omissão") || n.includes("omissao")) return "cloze";
+  if (type === 1 || n.includes("cloze") || n.includes("omissão") || n.includes("omissao"))
+    return "cloze";
   if (type !== null && type !== 0) return null;
   if (fieldCount < 2) return null;
   // "Basic", "Basic (and reversed card)", localized variants ("Básico", ...).
@@ -138,7 +154,9 @@ function readModels(db: Database): Map<string, ModelInfo> {
   if (models.size === 0 && hasColumn(db, "col", "models")) {
     const row = queryAll(db, "SELECT models FROM col LIMIT 1")[0];
     const json = row?.models ? JSON.parse(String(row.models)) : {};
-    for (const [id, m] of Object.entries<{ name?: string; type?: number; flds?: unknown[] }>(json)) {
+    for (const [id, m] of Object.entries<{ name?: string; type?: number; flds?: unknown[] }>(
+      json,
+    )) {
       models.set(id, {
         kind: classifyModel(m.name ?? "", m.type ?? 0, m.flds?.length ?? 0),
       });
@@ -167,13 +185,18 @@ function readDeckNames(db: Database): Map<string, string> {
 
 export async function parseApkg(file: File): Promise<ParsedApkg> {
   const zip = await JSZip.loadAsync(file);
+  // A package exported without "Support older Anki versions" ships BOTH
+  // collection.anki21b (the real data, zstd-compressed — unsupported here)
+  // AND a stub collection.anki2 that only contains an "update Anki" note.
+  // Checking anki21b first avoids silently parsing that stub as if it
+  // were the real collection.
+  if (zip.file("collection.anki21b") && !zip.file("collection.anki21")) {
+    throw new Error(
+      'Formato .apkg recente (anki21b) não suportado. No Anki, exporte de novo marcando "Suportar versões antigas do Anki".',
+    );
+  }
   const collectionFile = zip.file("collection.anki21") ?? zip.file("collection.anki2");
   if (!collectionFile) {
-    if (zip.file("collection.anki21b")) {
-      throw new Error(
-        "Formato .apkg recente (anki21b) não suportado. Exporte no Anki marcando 'Suportar versões antigas'.",
-      );
-    }
     throw new Error("Arquivo .apkg inválido: coleção não encontrada.");
   }
 
@@ -193,7 +216,10 @@ export async function parseApkg(file: File): Promise<ParsedApkg> {
     // Deck tree: "A::B::C" -> A (root) > B > C.
     const deckByPath = new Map<string, ApkgDeck>();
     const ensureDeck = (fullName: string): ApkgDeck => {
-      const parts = fullName.split("::").map((p) => p.trim()).filter(Boolean);
+      const parts = fullName
+        .split("::")
+        .map((p) => p.trim())
+        .filter(Boolean);
       if (!parts.length) parts.push("Default");
       let parentId: string | null = null;
       let last: ApkgDeck | undefined;
@@ -219,7 +245,10 @@ export async function parseApkg(file: File): Promise<ParsedApkg> {
       const model = models.get(String(r.mid));
       if (!model?.kind) continue;
       const fields = String(r.flds ?? "").split(FIELD_SEP);
-      const tags = String(r.tags ?? "").trim().split(/\s+/).filter(Boolean);
+      const tags = String(r.tags ?? "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
       const ord = Number(r.ord);
 
       let front: string;
@@ -243,7 +272,8 @@ export async function parseApkg(file: File): Promise<ParsedApkg> {
       const pergunta = cleanHtml(front);
       if (!pergunta) continue;
       const resposta = cleanHtml(back);
-      for (const src of [...imgSources(pergunta), ...imgSources(resposta)]) referencedMedia.add(src);
+      for (const src of [...imgSources(pergunta), ...imgSources(resposta)])
+        referencedMedia.add(src);
 
       const deck = ensureDeck(deckNames.get(String(r.did)) ?? "Default");
       cards.push({ id: uuid(), deck_id: deck.id, pergunta, resposta, tags });
@@ -267,7 +297,11 @@ export async function parseApkg(file: File): Promise<ParsedApkg> {
             return name;
           }
         })();
-        const key = referencedMedia.has(name) ? name : referencedMedia.has(decoded) ? decoded : null;
+        const key = referencedMedia.has(name)
+          ? name
+          : referencedMedia.has(decoded)
+            ? decoded
+            : null;
         if (!key) continue;
         const entry = zip.file(num);
         if (entry) mediaFiles.set(key, await entry.async("blob"));
@@ -307,7 +341,8 @@ async function checksum(text: string): Promise<number> {
 }
 
 function guid(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&()*+,-./:;<=>?@[]^_`{|}~";
+  const chars =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&()*+,-./:;<=>?@[]^_`{|}~";
   const bytes = crypto.getRandomValues(new Uint8Array(10));
   return [...bytes].map((b) => chars[b % chars.length]).join("");
 }
@@ -434,9 +469,24 @@ export async function buildApkg(
         timer: 0,
         replayq: true,
         dyn: false,
-        new: { delays: [1, 10], ints: [1, 4, 7], initialFactor: 2500, order: 1, perDay: 20, bury: false },
+        new: {
+          delays: [1, 10],
+          ints: [1, 4, 7],
+          initialFactor: 2500,
+          order: 1,
+          perDay: 20,
+          bury: false,
+        },
         lapse: { delays: [10], mult: 0, minInt: 1, leechFails: 8, leechAction: 0 },
-        rev: { perDay: 200, ease4: 1.3, fuzz: 0.05, ivlFct: 1, maxIvl: 36500, bury: false, hardFactor: 1.2 },
+        rev: {
+          perDay: 200,
+          ease4: 1.3,
+          fuzz: 0.05,
+          ivlFct: 1,
+          maxIvl: 36500,
+          bury: false,
+          hardFactor: 1.2,
+        },
       },
     };
 
